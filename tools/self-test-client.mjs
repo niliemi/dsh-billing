@@ -195,7 +195,12 @@ const state = {
   balanceCap: 1007.2,
   usedCNY: 12.3552,
   usedUSD: 1.716,
+  totalCNY: 111.072,
+  totalUSD: 15.4267,
+  baselineCNY: 98.7168,
+  resetAt: 1712345678000,
   tokens: [2000000, 1100000, 0, 0],
+  totalTokens: [22000000, 11100000, 0, 0],
   remainingCNY: 994.8448,
   percent: 1.2267,
   blocked: false,
@@ -204,6 +209,9 @@ const state = {
     id: "session-abc",
     usedCNY: 12.3552,
     usedUSD: 1.716,
+    totalCNY: 12.3552,
+    totalUSD: 1.716,
+    resetAt: 0,
     tokens: [2000000, 1100000, 0, 0],
     ceiling: 50,
     ceilingSource: "own",
@@ -222,6 +230,9 @@ const state = {
       tokens: [2000000, 1100000, 0, 0],
       usd: 1.716,
       cny: 12.3552,
+      totalTokens: [22000000, 11100000, 0, 0],
+      totalUSD: 15.4267,
+      totalCNY: 111.072,
       price: [1.32, 3.96, 0.044, 0],
       source: "official",
       percent: 1.2267,
@@ -233,6 +244,10 @@ const state = {
       tokens: [2000000, 1100000, 0, 0],
       usd: 1.716,
       cny: 12.3552,
+      totalTokens: [2000000, 1100000, 0, 0],
+      totalUSD: 1.716,
+      totalCNY: 12.3552,
+      resetAt: 0,
       ceiling: 50,
       ceilingSource: "own",
       percent: 24.7104,
@@ -254,10 +269,20 @@ console.log("\n[3] 两个角标（本会话 + 全局，各自带颜色点）");
   const list = texts(rendered);
   check("本会话角标 ¥12.36 / ¥50.00", list.includes("¥12.36 / ¥50.00"), true);
   check("全局角标 ¥12.36 / ¥1000.00", list.includes("¥12.36 / ¥1000.00"), true);
-  const chips = rendered.props.children;
-  check("两个都是 button", [chips[0].type, chips[1].type], ["button", "button"]);
-  check("本会话角标 title", /本会话计费/.test(chips[0].props.title), true);
+  const chips = rendered.props.children.map((pair) => pair.props.children[0]);
+  const resets = rendered.props.children.map((pair) => pair.props.children[1]);
+  check("两组（本会话 + 全局），每组 = 角标 + 重置符号", [rendered.props.children.length, chips.length, resets.length], [2, 2, 2]);
+  check("两个角标都是 button", [chips[0].type, chips[1].type], ["button", "button"]);
+  check("两个重置符号都是 button", [resets[0].type, resets[1].type], ["button", "button"]);
+  check("重置符号是 ↺", [resets[0].props.children, resets[1].props.children], ["↺", "↺"]);
+  check("本会话角标 title", /本会话本次计费/.test(chips[0].props.title), true);
   check("全局角标 title", /账户余额 ¥1007\.20/.test(chips[1].props.title), true);
+  check("角标 title 带累计", [chips[0].props.title, chips[1].props.title].every((t) => /累计 ¥/.test(t)), true);
+  check(
+    "重置符号 title 说明只进累计",
+    resets.every((b) => /本次归零，历史只进累计/.test(b.props.title)),
+    true,
+  );
   check("每个角标一个颜色点", [chips[0].props.children.length, chips[1].props.children.length], [2, 2]);
   check("颜色点是 6px 圆", chips[0].props.children[0].props.style.borderRadius, 999);
 }
@@ -298,6 +323,7 @@ console.log("\n[6] 左侧边栏底部余额");
   const list = texts(wide);
   check("显示余额", list.includes("余额 ¥1007.20"), true);
   check("title 含赠金", /其中赠金 ¥7\.20/.test(wide.props.title), true);
+  check("title 含本次已用与累计", /本次已用 ¥12\.36 \/ 累计 ¥111\.07/.test(wide.props.title), true);
   r.__reset();
   const collapsed = p.BalanceAction({ wide: false });
   check("收起态只留圆点", texts(collapsed), []);
@@ -319,14 +345,20 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
     "模型单价",
     "恢复官方价",
     "保存",
-    "用量归零",
-    "按模型用量（点击可编辑其单价）",
-    "每个会话各设各的，互不共用；留空或 0 = 该会话不限。填好回车或移开焦点即生效，单会话上限不受余额夹取。",
+    "↺ 重置计费起点",
+    "清空历史",
+    "按模型用量（本次 / 累计，点击可编辑其单价）",
+    "每个会话各设各的，互不共用；留空或 0 = 该会话不限。填好回车或移开焦点即生效，单会话上限不受余额夹取。右侧 ↺ 单独重置该会话的计费起点（历史只进累计）。",
     "刷新",
     "去充值",
   ]) {
     check(`含「${label}」`, list.includes(label), true);
   }
+  check("备注不再叫「用量归零」", list.includes("用量归零"), false);
+  check("概览标出「本次」", list.includes("本次"), true);
+  check("概览标出累计", list.some((t) => t.includes("累计 ¥111.07") && t.includes("≈$15.4267")), true);
+  check("说明重置只前移起点", list.some((t) => t.includes("本次归零、历史费用只进累计，token 记录一条不丢")), true);
+  check("按模型用量的每行也标累计", list.some((t) => t.includes("累计 ¥111.07")), true);
   check("不再有「已充金额」", list.includes("已充金额"), false);
   check("不再有「自设上限」", list.includes("自设上限"), false);
   check("不再有共用的「单会话默认上限」字段", list.includes("单会话默认上限"), false);
@@ -341,6 +373,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   check("单会话上限独立成段", list.includes("单会话上限"), true);
   check("单会话上限有列标题", ["会话", "用量", "费用", "占比"].every((t) => list.includes(t)), true);
   check("当前会话带「当前」标记", list.includes("当前"), true);
+  check("单会话段说明可单独重置起点", list.some((t) => t.includes("右侧 ↺ 单独重置该会话的计费起点")), true);
 
   // 每行只显示该会话自己的上限：一格 5、一格空，互不共用。
   const r2 = makeReact([]);
@@ -381,8 +414,10 @@ console.log("\n[8] 超余额确认框（全局）");
   check("去充值", list.includes("去充值"), true);
   check("调高上限（而非查看余额）", list.includes("调高上限"), true);
   check("暂不放行", list.includes("暂不放行"), true);
-  check("展示全局已用/自设上限", list.some((t) => t.includes("全局已用 ¥1007.50 / 你设的上限 ¥1000.00")), true);
+  check("展示全局本次已用/自设上限", list.some((t) => t.includes("全局本次已用 ¥1007.50 / 你设的上限 ¥1000.00")), true);
   check("展示余额作为参考", list.some((t) => t.includes("你的账户余额（¥1007.20）")), true);
+  check("确认框也能重置起点", list.includes("↺ 重置计费起点"), true);
+  check("确认框说明重置不必调高上限", list.some((t) => t.includes("不必调高上限")), true);
 }
 
 console.log("\n[9] 单会话超限确认框");
@@ -399,8 +434,9 @@ console.log("\n[9] 单会话超限确认框");
   check("标题", list.includes("本会话已达上限"), true);
   check("调高上限", list.includes("调高上限"), true);
   check("会话范围不给去充值", list.includes("去充值"), false);
-  check("展示会话已用/上限", list.some((t) => t.includes("本会话已用 ¥52.40 / 上限 ¥50.00")), true);
+  check("展示会话本次已用/上限", list.some((t) => t.includes("本会话本次已用 ¥52.40 / 上限 ¥50.00")), true);
   check("本会话放行仍在", list.includes("本会话放行"), true);
+  check("会话确认框也可重置该会话起点", list.includes("↺ 重置计费起点"), true);
 }
 
 console.log("\n[10] 浮层按开关渲染面板 / 确认框");

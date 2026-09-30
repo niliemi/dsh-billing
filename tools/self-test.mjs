@@ -368,11 +368,23 @@ try {
   check("diag 暴露余额", [diag.balance.available, diag.balance.cny], [true, 1007.2]);
   check("diag 暴露单会话上限表", diag.sessionLimits && typeof diag.sessionLimits === "object", true);
 
-  /* 12. 归零 -------------------------------------------------------------- */
-  console.log("\n[12] 用量归零");
+  /* 12. 重置计费起点（默认软重置：前移基线，累计保留） ------------------- */
+  console.log("\n[12] 重置计费起点（默认软重置）");
+  const before12 = (await call(ctx, "/plugin-billing/state")).body;
+  check("重置前有累计", before12.totalCNY > 0, true);
+  near("重置前本次 = 累计", before12.usedCNY, before12.totalCNY);
   const zeroed = await post(ctx, "/plugin-billing/reset", {});
-  near("归零后 CNY = 0", zeroed.usedCNY, 0);
-  check("归零后无明细", zeroed.breakdown.length, 0);
+  near("重置后本次 CNY = 0", zeroed.usedCNY, 0);
+  near("重置后累计不变", zeroed.totalCNY, before12.totalCNY);
+  near("前移额 = 重置前的本次", zeroed.baselineCNY, before12.usedCNY);
+  check("重置后不再阻断", zeroed.blocked, false);
+  check("重置后本次明细为 0、累计明细仍在", zeroed.breakdown.length > 0 && zeroed.breakdown.every((row) => row.cny === 0 && row.totalCNY > 0), true);
+  check("重置时间已记录", zeroed.resetAt > 0, true);
+  check("重置后 token 记录没被抹掉", zeroed.totalTokens.some((v) => v > 0), true);
+
+  const wiped = await post(ctx, "/plugin-billing/reset", { hard: true });
+  near("硬重置清掉累计", wiped.totalCNY, 0);
+  check("硬重置后无明细", wiped.breakdown.length, 0);
 
   /* 13. effect 清理 ------------------------------------------------------- */
   console.log("\n[13] effect 清理器");
@@ -465,6 +477,7 @@ try {
   apply(ctx16, { storeFile: legacyFile });
   const st16 = await stateOf(ctx16, "s-legacy");
   near("旧账本用量保留", st16.usedUSD, 1.32 + 3.96);
+  near("旧账本没有基线 → 本次 = 累计", st16.usedCNY, st16.totalCNY);
   check("旧账本会话仍在", st16.session?.id, "s-legacy");
   check(
     "0.2.1 的共用默认上限已落到该会话自己身上",
@@ -482,6 +495,60 @@ try {
     [undefined, 50, {}],
   );
   check("旧账本会话的 token 未丢", migrated.sessions["s-legacy"].steps["1:2"].t, [0, 1000000, 0, 0]);
+  check("迁移后磁盘上有基线字段（空）", [migrated.archiveBaseline, migrated.sessions["s-legacy"].baselineByModel], [{}, {}]);
+
+  /* 17. 重置计费起点：单会话 / 全局 / 累计保留 / 上限比的是本次 ----------- */
+  console.log("\n[17] 重置计费起点（单会话与全局）");
+  const ctx17 = makeCtx(makeAccount({ value: [cny(1000)] }));
+  apply(ctx17, { storeFile: join(dir, "reset.json") });
+  const s17a = fakeSession("sA", []);
+  emit(ctx17, s17a);
+  s17a.events.push(header("deepseek", "deepseek-v4-pro"));
+  s17a.events.push(usage(1, 1, { inputTokens: 1000000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }));
+  emit(ctx17, s17a); // sA: 9.504
+  const s17b = fakeSession("sB", []);
+  emit(ctx17, s17b);
+  s17b.events.push(header("deepseek", "deepseek-v4-pro"));
+  s17b.events.push(usage(1, 1, { inputTokens: 500000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }));
+  emit(ctx17, s17b); // sB: 4.752
+  let st17 = await stateOf(ctx17, "sA");
+  near("重置前全局本次", st17.usedCNY, 14.256);
+  near("重置前全局累计", st17.totalCNY, 14.256);
+  near("重置前会话本次", st17.session.usedCNY, 9.504);
+  near("重置前会话累计", st17.session.totalCNY, 9.504);
+
+  const capped17 = await post(ctx17, "/plugin-billing/config", { limit: 10 });
+  check("越线先阻断", [capped17.blocked, capped17.blockScope], [true, "global"]);
+  check("越线时确实拒绝", (await preStep(ctx17, payloadOf("sA"))).kind, "reject");
+
+  const afterA = await post(ctx17, "/plugin-billing/reset", { scope: "session", sessionId: "sA" });
+  near("单会话重置只清该会话的本次", afterA.session.usedCNY, 0);
+  near("单会话重置后全局本次 = 另一个会话", afterA.usedCNY, 4.752);
+  near("单会话重置不动累计", afterA.totalCNY, 14.256);
+  near("单会话重置不动会话累计", afterA.session.totalCNY, 9.504);
+  check("重置后不再阻断（不必调高上限）", afterA.blocked, false);
+  check("重置后守卫放行", (await preStep(ctx17, payloadOf("sA"))).kind, "enter");
+
+  const afterAll = await post(ctx17, "/plugin-billing/reset", {});
+  near("全局重置后本次 = 0", afterAll.usedCNY, 0);
+  near("全局重置后累计不变", afterAll.totalCNY, 14.256);
+  const rows17 = Object.fromEntries(afterAll.sessions.map((row) => [row.id, row]));
+  check("每个会话的本次都前移成 0", [rows17.sA.cny, rows17.sB.cny], [0, 0]);
+  near("会话 sA 的累计保留", rows17.sA.totalCNY, 9.504);
+  near("会话 sB 的累计保留", rows17.sB.totalCNY, 4.752);
+
+  s17a.events.push(header("deepseek", "deepseek-v4-pro"));
+  s17a.events.push(usage(2, 1, { inputTokens: 100000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }));
+  emit(ctx17, s17a); // +0.9504
+  const st17c = await stateOf(ctx17, "sA");
+  near("重置后新用量只进本次", st17c.session.usedCNY, 0.9504);
+  near("会话累计含前移部分", st17c.session.totalCNY, 10.4544);
+  near("全局本次 = 新用量", st17c.usedCNY, 0.9504);
+  near("全局累计 = 全部历史", st17c.totalCNY, 15.2064);
+  check("远未到上限 → 放行", (await preStep(ctx17, payloadOf("sA"))).kind, "enter");
+  const disk17 = JSON.parse(readFileSync(join(dir, "reset.json"), "utf8"));
+  check("基线已落盘", [disk17.archiveBaseline, disk17.sessions.sA.baselineByModel["deepseek/deepseek-v4-pro"]], [{}, [1000000, 0, 0, 0]]);
+  check("账本仍只存 token（没有金额字段）", ["usedCNY", "totalCNY", "cny"].every((key) => !(key in disk17)), true);
 } finally {
   try {
     rmSync(dir, { recursive: true, force: true });

@@ -17,14 +17,15 @@
 | [02Muller25/dsh-api-balance](https://github.com/02Muller25/dsh-api-balance) | composer 输入框下方的账户余额常驻显示 |
 | [songoao25/dsh-bottom-info-bar](https://github.com/songoao25/dsh-bottom-info-bar) | 底部信息条：provider/model、余额、峰谷价、**真实持久化的每会话花费** |
 
-也就是说：**「按 token 算钱 + 上限 + 硬阻断」这件事已经有人做完了，而且做得比本插件多。** 本插件剩下的真正差异只有四条：
+也就是说：**「按 token 算钱 + 上限 + 硬阻断」这件事已经有人做完了，而且做得比本插件多。** 本插件剩下的真正差异只有五条：
 
-1. 常驻在 `conversation.composer.dock`（与官方上下文环同一行）的**两个**角标：本会话与全局并排，格式 `<符号><已用> / <上限>`，各带一个绿/橙/红圆点；
+1. 常驻在 `conversation.composer.dock`（与官方上下文环同一行）的**两个**角标：本会话与全局并排，格式 `<符号><本次已用> / <上限>`，各带一个绿/橙/红圆点；
 2. 人民币 + 可改汇率，**全局上限由你自设**（留空 = 不设、不阻断；超过账户余额会被夹到余额），左侧边栏底部同步显示账户余额（充值 + 赠金，60 秒自动刷新）；
 3. **单会话上限**：每个会话各自设一个数字，彼此独立、互不共用（0.2.2 起没有那个对所有会话一起生效的默认值）；
-4. 阻断前先弹确认框，可一次性 / 本会话放行 / 去充值。
+4. **上限比的是「本次」而不是终身累计**：每个角标右边一个 ↺，重置 = 基线前移（本次归零、不再阻断，历史只进累计、token 一条不丢），所以充值后不必再调高上限；想真清空另有「清空历史」（不可恢复）；
+5. 阻断前先弹确认框，可一次性 / 本会话放行 / 去充值 / 调高上限 / ↺ 重置计费起点。
 
-精选列表的查重规则原文是「是否与既有条目重复（谁更好谁留）」。主人已知悉上述风险，**决定照提**——PR 正文里已经写明这四条差异与三条最接近的既有条目，并明说「若判为重复，关闭或收窄条目都可以」，不含任何夸大。
+精选列表的查重规则原文是「是否与既有条目重复（谁更好谁留）」。主人已知悉上述风险，**决定照提**——PR 正文里已经写明这些差异与三条最接近的既有条目，并明说「若判为重复，关闭或收窄条目都可以」，不含任何夸大。
 
 **仓库可用性已核实**：GitHub 用户 `niliemi` 存在（200），`niliemi/dsh-billing` → **404，仓库名未被占用**。
 
@@ -36,7 +37,7 @@
 - [x] `package.json`：去掉 `private`、英文准确描述、`keywords` 含 `dsh-plugin`、`repository`/`bugs`/`homepage`/`author` 指向 `github.com/niliemi/dsh-billing`
 - [x] `dsh.bundle` + `dsh.client` 均已声明；**零 `@deepseek-ai/*` 运行时依赖**
 - [x] `LICENSE`（MIT，署名 niliemi）、`.gitignore`、`.gitattributes`（`* text=auto eol=lf`）
-- [x] 自测：`node tools/self-test.mjs` → **107/0**，`node tools/self-test-client.mjs` → **83/0**
+- [x] 自测：`node tools/self-test.mjs` → **142/0**，`node tools/self-test-client.mjs` → **99/0**
 - [x] `npm pack --dry-run` → 7 个文件 / 26 KB，内容完整
 
 ## ⓪ 自动路径（推荐）：只放一个 token 文件，其余交给脚本
