@@ -395,6 +395,31 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   check("两个会话两格", cells.length, 2);
   check("每格只显示自己的上限（互不共用）", cells.map((node) => node.props.defaultValue), ["5", ""]);
   check("每格提示不与其他会话共用", cells.every((node) => /不与其他会话共用/.test(node.props.title)), true);
+
+  // 重置过的会话：行里上排 = 本次、下排 = 累计（历史仍在，看得见）。
+  const resetSession = {
+    ...state,
+    sessions: [
+      {
+        ...state.sessions[0],
+        id: "session-reset",
+        tokens: [12000, 0, 0, 0],
+        cny: 0.0132,
+        totalTokens: [3000000, 0, 0, 0],
+        totalUSD: 3.96,
+        totalCNY: 28.512,
+        resetAt: 1790778917567,
+        ceiling: 0,
+        ceilingSource: "none",
+      },
+    ],
+  };
+  const resetList = texts(p2.Panel({ state: resetSession, sessionId: "", onClose() {}, onSaved() {} }));
+  check("会话行上排是本次费用", resetList.includes("¥0.0132"), true);
+  check("会话行下排是累计费用", resetList.includes("累计 ¥28.51"), true);
+  check("会话行下排是累计 token", resetList.some((t) => t === "累计 3.00M tok"), true);
+  check("会话行上排是本次 token", resetList.includes("12.0K tok"), true);
+  check("表单说明上排本次、下排累计", resetList.some((t) => t.includes("上排 = 本次") && t.includes("下排 = 累计")), true);
 }
 
 console.log("\n[8] 超余额确认框（全局）");
