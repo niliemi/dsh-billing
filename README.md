@@ -28,22 +28,22 @@
 
 - **全局上限由你自己设**（面板「全局计费上限」，账本 `limit`）：填多少就是多少，**留空 / 0 = 不设上限、不阻断**。它不来自余额。
 - **余额只是边界与参考**：DeepSeek 账号余额 = 充值余额 + 赠金（`deepseekAccount.getBalance`），每 60 秒自动刷新，也可在面板里手动刷新。你设的全局上限**超过余额时会被夹到余额**（`ceilingSource: "limit-clamped"`，原值仍留在账本里，余额涨回来会重新放宽）；余额取不到（未登录、接口失败）或余额为 0 时**不夹取**，你设的上限照旧生效。
-- **单会话上限**：面板里可设一个**默认值**（对所有会话生效），也可以给**单个会话**单独覆盖一个数字；留空 / 0 = 不设。单会话上限**不受余额夹取**。
+- **单会话上限**：面板「会话用量与单会话上限」里给**每个会话各设各的**，**彼此独立、不共用**（0.2.2 起已删掉原来那个对所有会话一起生效的「默认上限」）；留空 / 0 = 该会话不设上限。单会话上限**不受余额夹取**。
 - 越线且守卫开启时，宿主在 `agent/pre-step` 上返回 `{kind:"reject"}`，该轮结束且不发 LLM 请求（`blockScope` 区分是全局还是单会话）。
 - 阻断后界面弹确认框，可选：**一次性放行** / **本会话放行** / **去充值**（有待充地址时）/ **调高上限** / **暂不放行**。放行只影响后续请求，需要重新发送刚才的消息。
 - 「本会话放行」只免该会话，**不会绕过全局上限**；「一次性放行」对两类上限都生效一次。
 
 ## 面板（点击角标或侧栏余额）
 
-概览（已用 / 上限 + 百分比 + ≈USD + 进度条）→ 账户余额（只读：逐钱包的充值余额 / 赠金行、余额合计、其中赠金、刷新、去充值）→ 额度（**全局计费上限**、单会话默认上限、汇率、超额阻断开关）→ 单价（当前模型四档官方价、按模型覆盖 / 恢复官方价、按模型的用量明细）→ 会话用量与单会话上限（每行一个数字输入，回车或移开焦点即生效）→ 保存 / 用量归零。
+概览（已用 / 上限 + 百分比 + ≈USD + 进度条）→ 账户余额（只读：逐钱包的充值余额 / 赠金行、余额合计、其中赠金、刷新、去充值）→ 额度（**全局计费上限**、汇率、超额阻断开关）→ 单价（当前模型四档官方价、按模型覆盖 / 恢复官方价、按模型的用量明细）→ 会话用量与单会话上限（每个会话一行数字输入，**各设各的、互不共用**，留空 / 0 = 该会话不限；回车或移开焦点即生效）→ 保存 / 用量归零。
 
 面板里没有「已充金额」——那是 0.1 的遗留概念；上限也不再等于余额，而是你在「全局计费上限」里填的数字。
 
 ## 数据
 
 - 账本：`~/.dsh/billing/ledger.json`（可用插件 config 的 `storeFile` 覆盖），原子写盘 + 1200ms 防抖。
-- `version: 2`：只存 token 与模型键（不含金额），外加 `limit`（你自设的全局上限，原值）、`sessionLimit`（默认上限）、`sessionLimits`（按会话覆盖）、`sessionAllow`（已放行的会话）；0.1 的 `topUp`（已充金额）保留但已废弃。全局有效上限由 `limit` 与余额现算：`ceilingSource` 取 `unset`（未设） / `limit`（自设） / `limit-clamped`（超过余额被夹）。
-- 旧账本自动升级：读到 0.1 的 `version: 1` 文件时会就地补成 `version: 2` 并**立即落盘**（不等下一次用量变化），会话、步骤与 token 全部保留，金额仍按当前汇率/单价现算。
+- `version: 2`：只存 token 与模型键（不含金额），外加 `limit`（你自设的全局上限，原值）、`sessionLimits`（**按会话各存各的**上限）、`sessionAllow`（已放行的会话）；0.1 的 `topUp`（已充金额）保留但已废弃，0.2.1 的 `sessionLimit`（对所有会话一起生效的默认上限）已被 `sessionLimits` 取代。全局有效上限由 `limit` 与余额现算：`ceilingSource` 取 `unset`（未设） / `limit`（自设） / `limit-clamped`（超过余额被夹）；单会话的 `ceilingSource` 取 `own`（该会话自己设了） / `none`（该会话没设）。
+- 旧账本自动升级：读到 0.1 的 `version: 1` 文件时会就地补成 `version: 2` 并**立即落盘**（不等下一次用量变化），会话、步骤与 token 全部保留，金额仍按当前汇率/单价现算；若旧账本里设过 `sessionLimit`（共用默认上限），它会被落到当时已有记录的每个会话上，然后字段消失——限额不丢，且从此各自独立可改。
 - 最多保留 40 个会话的明细，更早的会话折叠进按模型的归档（金额不受影响）。
 
 ## HTTP 接口（宿主半边，前缀 `/plugin-billing`）
@@ -51,11 +51,11 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/state?session=<id>&refresh=1` | 角标/面板所需的全部状态；带 `session` 时附带该会话的用量与上限，`refresh=1` 强制刷新余额 |
-| POST | `/config` | 写入汇率、守卫、**全局上限（`{limit}`，0 = 不设）**、模型单价覆盖（`{price:{key,value}}` / `{price:{key,reset:true}}`）、单会话默认上限（`{sessionLimit}`）或单个会话的上限（`{sessionId, sessionLimitFor}`，传 0 清除）；上限被余额夹取时响应带 `limitClamped: true` |
+| POST | `/config` | 写入汇率、守卫、**全局上限（`{limit}`，0 = 不设）**、模型单价覆盖（`{price:{key,value}}` / `{price:{key,reset:true}}`）、**某个会话自己的上限（`{sessionId, sessionLimitFor}`，传 0 清除该会话的上限）**；上限被余额夹取时响应带 `limitClamped: true`。0.2.1 的 `{sessionLimit}`（共用默认上限）已废弃、被忽略 |
 | POST | `/override` | `{mode:"once"｜"session"｜"off"｜"reset", sessionId?}` 放行 / 清除放行 |
 | POST | `/reset` | 用量归零 |
 | GET | `/pricing?q=` | 价目表检索（精确命中优先） |
-| GET | `/diag` | 诊断：`clientModules` 是否已把浏览器半边收进启动图，以及实时余额、自设全局上限与单会话默认上限 |
+| GET | `/diag` | 诊断：`clientModules` 是否已把浏览器半边收进启动图，以及实时余额、自设全局上限与单会话上限表 |
 
 守卫：仅接受同源 / 带 `dsh-auth-` cookie / 回环地址的请求，响应 `cache-control: no-store`。
 
@@ -76,15 +76,15 @@
 - insert:
     - id: yoka-dsh-billing
       name: 'yoka-dsh-billing'
-      config: { rate: 7.2, sessionLimit: 0, guard: true }
+      config: { rate: 7.2, limit: 0, guard: true }
 ```
 
 ## 开发
 
 ```powershell
 node tools/build-pricing.mjs "<pi-ai>/dist/providers/data"   # 重新生成 lib/pricing.json
-node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 自设上限与夹取 / 守卫 / 路由 / 持久化 / 旧账本迁移（104 项）
-node tools/self-test-client.mjs   # 浏览器：模块外壳 / 三个槽位 / 角标、侧栏余额与面板文案（76 项）
+node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 自设上限与夹取 / 守卫 / 路由 / 持久化 / 旧账本迁移（107 项）
+node tools/self-test-client.mjs   # 浏览器：模块外壳 / 槽位 / 角标、侧栏余额与面板文案（80 项）
 node tools/probe-hmr.mjs          # 核对「运行中的宿主」是否已发布本地这版 client.js（无需刷新/重启）
 ```
 

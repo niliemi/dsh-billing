@@ -366,7 +366,7 @@ try {
   check("价目表总数 > 500", pricing.count > 500, true);
   const diag = (await call(ctx, "/plugin-billing/diag")).body;
   check("diag 暴露余额", [diag.balance.available, diag.balance.cny], [true, 1007.2]);
-  check("diag 暴露单会话默认上限", diag.sessionLimit, 0);
+  check("diag 暴露单会话上限表", diag.sessionLimits && typeof diag.sessionLimits === "object", true);
 
   /* 12. 归零 -------------------------------------------------------------- */
   console.log("\n[12] 用量归零");
@@ -397,12 +397,12 @@ try {
 
   await post(ctx14, "/plugin-billing/config", { sessionLimit: 20 });
   st14 = await stateOf(ctx14, "s14");
-  check("会话用默认上限", [st14.session.ceiling, st14.session.ceilingSource], [20, "default"]);
-  check("默认上限内不阻断", (await preStep(ctx14, payloadOf("s14"))).kind, "enter");
+  check("旧的共用默认字段已失效", [st14.session.ceiling, st14.session.ceilingSource], [0, "none"]);
+  check("旧的共用默认不再阻断", (await preStep(ctx14, payloadOf("s14"))).kind, "enter");
 
   await post(ctx14, "/plugin-billing/config", { sessionId: "s14", sessionLimitFor: 5 });
   st14 = await stateOf(ctx14, "s14");
-  check("会话单独设上限", [st14.session.ceiling, st14.session.ceilingSource], [5, "override"]);
+  check("会话单独设上限", [st14.session.ceiling, st14.session.ceilingSource], [5, "own"]);
   check("会话越线 → blocked(session)", [st14.blocked, st14.blockScope], [true, "session"]);
   check("会话越线被拒绝", (await preStep(ctx14, payloadOf("s14"))).kind, "reject");
   check("其它会话不受影响", (await preStep(ctx14, payloadOf("s99"))).kind, "enter");
@@ -415,8 +415,14 @@ try {
 
   await post(ctx14, "/plugin-billing/config", { sessionId: "s14", sessionLimitFor: 0 });
   st14 = await stateOf(ctx14, "s14");
-  check("清除覆盖 → 回到默认上限", st14.session.ceilingSource, "default");
+  check("清除该会话上限 → 该会话不设上限", [st14.session.ceiling, st14.session.ceilingSource], [0, "none"]);
+  check("清除后不再阻断", (await preStep(ctx14, payloadOf("s14"))).kind, "enter");
   check("清覆盖同时清掉放行", st14.session.allowed, false);
+
+  await post(ctx14, "/plugin-billing/config", { sessionId: "s14", sessionLimitFor: 3 });
+  await post(ctx14, "/plugin-billing/config", { sessionId: "s99", sessionLimitFor: 4 });
+  check("两个会话各存各的上限", (await stateOf(ctx14, "s14")).session.ceiling, 3);
+  check("另一会话的上限只作用于它自己", (await stateOf(ctx14, "s99")).session.ceiling, 4);
 
   /* 15. 余额取不到 → 不阻断（哪怕用量很大） ------------------------------ */
   console.log("\n[15] 余额不可用时绝不阻断");
@@ -442,6 +448,7 @@ try {
       symbol: "¥",
       topUp: 500,
       limit: 300,
+      sessionLimit: 50,
       guard: true,
       sessions: {
         "s-legacy": {
@@ -459,13 +466,21 @@ try {
   const st16 = await stateOf(ctx16, "s-legacy");
   near("旧账本用量保留", st16.usedUSD, 1.32 + 3.96);
   check("旧账本会话仍在", st16.session?.id, "s-legacy");
-  check("旧账本用量按会话归属", st16.session?.ceilingSource, "none");
+  check(
+    "0.2.1 的共用默认上限已落到该会话自己身上",
+    [st16.session?.ceiling, st16.session?.ceilingSource],
+    [50, "own"],
+  );
   check("旧字段 topUp 保留（废弃不再当上限），limit 当作自设全局上限", [st16.topUp, st16.limit, st16.ceilingSource, st16.ceiling], [500, 300, "limit", 300]);
   check("旧账本的上限不高，未阻断", st16.blocked, false);
   const migrated = JSON.parse(readFileSync(legacyFile, "utf8"));
   check("落盘后升级为 version 2", migrated.version, 2);
   check("升级后旧字段仍在文件里", [migrated.topUp, migrated.limit], [500, 300]);
-  check("升级后补上单会话字段", [migrated.sessionLimit, migrated.sessionLimits, migrated.sessionAllow], [0, {}, {}]);
+  check(
+    "升级后共用默认字段消失、改成该会话自己的上限",
+    [migrated.sessionLimit, migrated.sessionLimits["s-legacy"], migrated.sessionAllow],
+    [undefined, 50, {}],
+  );
   check("旧账本会话的 token 未丢", migrated.sessions["s-legacy"].steps["1:2"].t, [0, 1000000, 0, 0]);
 } finally {
   try {

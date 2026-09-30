@@ -76,8 +76,21 @@ function texts(node, out = []) {
   return out;
 }
 
-/* -------------------------------- 载入 client.js -------------------------------- */
+/** 从 createElement 假树里收集所有 props.type === "number" 的输入框。 */
+function numberInputs(node, out = []) {
+  if (node === null || node === undefined || node === false) return out;
+  if (Array.isArray(node)) {
+    for (const child of node) numberInputs(child, out);
+    return out;
+  }
+  if (typeof node === "object" && "props" in node) {
+    if (node.props.type === "number") out.push(node);
+    numberInputs(typeof node.type === "function" ? node.type(node.props) : node.props.children, out);
+  }
+  return out;
+}
 
+/* -------------------------------- 载入 client.js -------------------------------- */
 const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 let loaded = null;
 const fakeWindow = {
@@ -187,14 +200,13 @@ const state = {
   percent: 1.2267,
   blocked: false,
   blockScope: null,
-  sessionLimit: 20,
   session: {
     id: "session-abc",
     usedCNY: 12.3552,
     usedUSD: 1.716,
     tokens: [2000000, 1100000, 0, 0],
     ceiling: 50,
-    ceilingSource: "override",
+    ceilingSource: "own",
     percent: 24.7104,
     allowed: false,
     blocked: false,
@@ -222,7 +234,7 @@ const state = {
       usd: 1.716,
       cny: 12.3552,
       ceiling: 50,
-      ceilingSource: "override",
+      ceilingSource: "own",
       percent: 24.7104,
       allowed: false,
       updated: 1,
@@ -302,7 +314,6 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
     "全局计费上限",
     "账户余额",
     "余额合计",
-    "单会话默认上限",
     "汇率",
     "超额阻断",
     "模型单价",
@@ -310,7 +321,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
     "保存",
     "用量归零",
     "按模型用量（点击可编辑其单价）",
-    "会话用量与单会话上限（回车或移开焦点即生效）",
+    "会话用量与单会话上限（每个会话各自独立、不共用；留空或 0 = 该会话不限。回车或移开焦点即生效）",
     "刷新",
     "去充值",
   ]) {
@@ -318,6 +329,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   }
   check("不再有「已充金额」", list.includes("已充金额"), false);
   check("不再有「自设上限」", list.includes("自设上限"), false);
+  check("不再有共用的「单会话默认上限」字段", list.includes("单会话默认上限"), false);
   check("明细列出模型", list.includes("deepseek/deepseek-v4-pro"), true);
   check("明细列出会话", list.includes("session-abc"), true);
   check("官方价四档", list.some((t) => t.includes("1.32 / 3.96 / 0.044 / 0.000")), true);
@@ -325,6 +337,25 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   check("赠金行带标记", list.includes("USD 1.00（赠金） ≈ ¥7.20"), true);
   check("赠金行左侧标签", list.includes("赠金"), true);
   check("全局上限可自设的说明", list.some((t) => t.includes("超过账户余额") && t.includes("余额只是边界与参考")), true);
+  check("说明单会话上限在会话用量里逐个设", list.some((t) => t.includes("各自独立、不共用")), true);
+
+  // 每行只显示该会话自己的上限：一格 5、一格空，互不共用。
+  const r2 = makeReact([]);
+  const { exports: p2 } = loadPlugin(r2);
+  const twoSessions = {
+    ...state,
+    session: { ...state.session, id: "session-a", ceiling: 5, ceilingSource: "own" },
+    sessions: [
+      { ...state.sessions[0], id: "session-a", ceiling: 5, ceilingSource: "own" },
+      { ...state.sessions[0], id: "session-b", ceiling: 0, ceilingSource: "none" },
+    ],
+  };
+  const cells = numberInputs(p2.Panel({ state: twoSessions, sessionId: "session-a", onClose() {}, onSaved() {} })).filter(
+    (node) => node.props.placeholder === "不限",
+  );
+  check("两个会话两格", cells.length, 2);
+  check("每格只显示自己的上限（互不共用）", cells.map((node) => node.props.defaultValue), ["5", ""]);
+  check("每格提示不与其他会话共用", cells.every((node) => /不与其他会话共用/.test(node.props.title)), true);
 }
 
 console.log("\n[8] 超余额确认框（全局）");
