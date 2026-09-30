@@ -71,12 +71,12 @@
 
 | 证据 | 结果 |
 |---|---|
-| `node tools/self-test.mjs` | **85 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、余额不可用不阻断、全局与单会话上限、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销） |
+| `node tools/self-test.mjs` | **93 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、余额不可用不阻断、全局与单会话上限、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销、0.1 旧账本迁移落盘） |
 | `node tools/self-test-client.mjs` | **74 通过 / 0 失败**（模块外壳、三个槽位注册、双角标文案与颜色点、侧栏余额、面板字段、两种确认框、浮层开关、effect 清理） |
 | `GET /plugin-billing/state` | 200，真实数据（`usedCNY`、四类 token、`current.key`、`source: "official"`、`balance` 字段） |
 | 客户端 Slots inspect | `conversation.composer.dock` occupants 含 `{id: "billing", order: 20, active: true}`；`sidebar.footer.action` 含 `{id: "billing-balance", order: 20}` |
 | `node tools/probe-hmr.mjs` | 本地 `client.js` revision == 运行中宿主发行的 revision（HMR 已跟到） |
-| 账本 | `version: 2`，只有 token 与模型键，无金额字段 |
+| 账本 | `version: 2`，只有 token 与模型键，无金额字段；读到 0.1 的 `version: 1` 会就地升级并立即落盘（用真实账本副本演练过：3 个会话 / 370 个步骤前后一致） |
 
 ## 5. 已知边界
 
@@ -94,7 +94,7 @@ lib/index.js            宿主半边：折叠、计价、余额、上限、守�
 lib/client.js           浏览器半边：双角标 + 侧栏余额 + 面板 + 超额确认框
 lib/pricing.json        官方价目表（生成物）
 tools/build-pricing.mjs 从 pi-ai 数据生成 pricing.json
-tools/self-test.mjs     宿主自测（85 项）
+tools/self-test.mjs     宿主自测（93 项）
 tools/self-test-client.mjs 浏览器自测（74 项）
 tools/probe-hmr.mjs     核对运行中宿主已发行本地这版 client.js
 tools/probe-http.mjs    HTTP 探活

@@ -26,7 +26,7 @@ It reports and limits cost/consumption. It does not render conversation, choose 
 
 ## How it was verified
 
-- `node tools/self-test.mjs` → 85 passed / 0 failed (pricing, replacement folding, rate re-pricing, balance = top-up + bonus, balance-unavailable never blocks, global and per-session ceilings, over-limit reject with `blockScope`, one-off / session-only overrides, request guard, persistence, route teardown).
+- `node tools/self-test.mjs` → 93 passed / 0 failed (pricing, replacement folding, rate re-pricing, balance = top-up + bonus, balance-unavailable never blocks, global and per-session ceilings, over-limit reject with `blockScope`, one-off / session-only overrides, request guard, persistence, route teardown, 0.1 ledger migration written back to disk).
 - `node tools/self-test-client.mjs` → 74 passed / 0 failed (module shell, three slot registrations, both chips, sidebar balance, panel fields, both confirm dialogs, overlay toggling, effect cleanup).
 - Installed into a live DSH profile: `GET /plugin-billing/state` returns 200 with real usage, the client slot tree shows the `billing` entry active in `conversation.composer.dock` next to the shipped meter, and the `billing-balance` entry active in `sidebar.footer.action`.
 

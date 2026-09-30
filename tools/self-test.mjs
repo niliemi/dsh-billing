@@ -2,7 +2,7 @@
  * 宿主半边自测：折叠 / 计价 / 全局上限=余额 / 单会话上限 / 守卫 / 路由 / 持久化。
  * 用法：node tools/self-test.mjs
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -411,6 +411,42 @@ try {
   const st15 = await stateOf(ctx15);
   check("余额不可用 → 上限 0", [st15.ceiling, st15.ceilingAvailable], [0, false]);
   check("余额不可用 → 不阻断", [st15.blocked, (await preStep(ctx15, payloadOf("s15"))).kind], [false, "enter"]);
+
+  /* 16. 0.1 的旧账本（version 1）能被读进来，且用量不丢 ------------------- */
+  console.log("\n[16] 旧账本（version 1）迁移");
+  const legacyFile = join(dir, "legacy.json");
+  writeFileSync(
+    legacyFile,
+    JSON.stringify({
+      version: 1,
+      rate: 7.2,
+      symbol: "¥",
+      topUp: 500,
+      limit: 300,
+      guard: true,
+      sessions: {
+        "s-legacy": {
+          lastSeq: 42,
+          steps: {
+            "1:1": { t: [1000000, 0, 0, 0], m: "deepseek/deepseek-v4-pro" },
+            "1:2": { t: [0, 1000000, 0, 0], m: "deepseek/deepseek-v4-pro" },
+          },
+        },
+      },
+    }),
+  );
+  const ctx16 = makeCtx(makeAccount({ value: [cny(1000)], bonus: [] }));
+  apply(ctx16, { storeFile: legacyFile });
+  const st16 = await stateOf(ctx16, "s-legacy");
+  near("旧账本用量保留", st16.usedUSD, 1.32 + 3.96);
+  check("旧账本会话仍在", st16.session?.id, "s-legacy");
+  check("旧账本用量按会话归属", st16.session?.ceilingSource, "none");
+  check("旧字段 topUp 保留但不再当上限", [st16.topUp, st16.limit, st16.ceilingSource], [500, 300, "balance"]);
+  const migrated = JSON.parse(readFileSync(legacyFile, "utf8"));
+  check("落盘后升级为 version 2", migrated.version, 2);
+  check("升级后旧字段仍在文件里", [migrated.topUp, migrated.limit], [500, 300]);
+  check("升级后补上单会话字段", [migrated.sessionLimit, migrated.sessionLimits, migrated.sessionAllow], [0, {}, {}]);
+  check("旧账本会话的 token 未丢", migrated.sessions["s-legacy"].steps["1:2"].t, [0, 1000000, 0, 0]);
 } finally {
   try {
     rmSync(dir, { recursive: true, force: true });

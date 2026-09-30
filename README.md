@@ -43,6 +43,7 @@
 
 - 账本：`~/.dsh/billing/ledger.json`（可用插件 config 的 `storeFile` 覆盖），原子写盘 + 1200ms 防抖。
 - `version: 2`：只存 token 与模型键（不含金额），外加 `sessionLimit`（默认上限）、`sessionLimits`（按会话覆盖）、`sessionAllow`（已放行的会话）；0.1 的 `topUp` / `limit` 字段保留但不再参与上限计算。
+- 旧账本自动升级：读到 0.1 的 `version: 1` 文件时会就地补成 `version: 2` 并**立即落盘**（不等下一次用量变化），会话、步骤与 token 全部保留，金额仍按当前汇率/单价现算。
 - 最多保留 40 个会话的明细，更早的会话折叠进按模型的归档（金额不受影响）。
 
 ## HTTP 接口（宿主半边，前缀 `/plugin-billing`）
@@ -82,7 +83,7 @@
 
 ```powershell
 node tools/build-pricing.mjs "<pi-ai>/dist/providers/data"   # 重新生成 lib/pricing.json
-node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 上限 / 守卫 / 路由 / 持久化（85 项）
+node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 上限 / 守卫 / 路由 / 持久化 / 旧账本迁移（93 项）
 node tools/self-test-client.mjs   # 浏览器：模块外壳 / 三个槽位 / 角标、侧栏余额与面板文案（74 项）
 node tools/probe-hmr.mjs          # 核对「运行中的宿主」是否已发布本地这版 client.js（无需刷新/重启）
 ```

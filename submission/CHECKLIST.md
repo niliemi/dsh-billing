@@ -36,7 +36,7 @@
 - [x] `package.json`：去掉 `private`、英文准确描述、`keywords` 含 `dsh-plugin`、`repository`/`bugs`/`homepage`/`author` 指向 `github.com/niliemi/dsh-billing`
 - [x] `dsh.bundle` + `dsh.client` 均已声明；**零 `@deepseek-ai/*` 运行时依赖**
 - [x] `LICENSE`（MIT，署名 niliemi）、`.gitignore`、`.gitattributes`（`* text=auto eol=lf`）
-- [x] 自测：`node tools/self-test.mjs` → **85/0**，`node tools/self-test-client.mjs` → **74/0**
+- [x] 自测：`node tools/self-test.mjs` → **93/0**，`node tools/self-test-client.mjs` → **74/0**
 - [x] `npm pack --dry-run` → 7 个文件 / 26 KB，内容完整
 
 ## ⓪ 自动路径（推荐）：只放一个 token 文件，其余交给脚本
