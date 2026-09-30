@@ -280,9 +280,11 @@ console.log("\n[3] 两个角标（本会话 + 全局，各自带颜色点）");
   check("角标 title 带累计", [chips[0].props.title, chips[1].props.title].every((t) => /累计 ¥/.test(t)), true);
   check(
     "重置符号 title 说明只进累计",
-    resets.every((b) => /本次归零，历史只进累计/.test(b.props.title)),
+    resets.every((b) => /本次归零/.test(b.props.title) && /历史只进累计/.test(b.props.title)),
     true,
   );
+  check("本会话 ↺ 说明只动本会话", /只动本会话/.test(resets[0].props.title), true);
+  check("全局 ↺ 说明只动全局、不碰各会话", /只动全局/.test(resets[1].props.title) && /不碰各会话/.test(resets[1].props.title), true);
   check("每个角标一个颜色点", [chips[0].props.children.length, chips[1].props.children.length], [2, 2]);
   check("颜色点是 6px 圆", chips[0].props.children[0].props.style.borderRadius, 999);
 }
@@ -348,7 +350,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
     "↺ 重置计费起点",
     "清空历史",
     "按模型用量（本次 / 累计，点击可编辑其单价）",
-    "每个会话各设各的，互不共用；留空或 0 = 该会话不限。填好回车或移开焦点即生效，单会话上限不受余额夹取。右侧 ↺ 单独重置该会话的计费起点（历史只进累计）。",
+    "每个会话各设各的，互不共用；留空或 0 = 该会话不限。填好回车或移开焦点即生效，单会话上限不受余额夹取。右侧 ↺ 只重置该会话自己的计费起点（不动全局、也不动别的会话；历史只进累计）。",
     "刷新",
     "去充值",
   ]) {
@@ -358,6 +360,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   check("概览标出「本次」", list.includes("本次"), true);
   check("概览标出累计", list.some((t) => t.includes("累计 ¥111.07") && t.includes("≈$15.4267")), true);
   check("说明重置只前移起点", list.some((t) => t.includes("本次归零、历史费用只进累计，token 记录一条不丢")), true);
+  check("概览说明两个起点互不牵连", list.some((t) => t.includes("全局与单会话两个起点各自独立、互不牵连")), true);
   check("按模型用量的每行也标累计", list.some((t) => t.includes("累计 ¥111.07")), true);
   check("不再有「已充金额」", list.includes("已充金额"), false);
   check("不再有「自设上限」", list.includes("自设上限"), false);
@@ -373,7 +376,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   check("单会话上限独立成段", list.includes("单会话上限"), true);
   check("单会话上限有列标题", ["会话", "用量", "费用", "占比"].every((t) => list.includes(t)), true);
   check("当前会话带「当前」标记", list.includes("当前"), true);
-  check("单会话段说明可单独重置起点", list.some((t) => t.includes("右侧 ↺ 单独重置该会话的计费起点")), true);
+  check("单会话段说明可单独重置起点", list.some((t) => t.includes("右侧 ↺ 只重置该会话自己的计费起点")), true);
 
   // 每行只显示该会话自己的上限：一格 5、一格空，互不共用。
   const r2 = makeReact([]);

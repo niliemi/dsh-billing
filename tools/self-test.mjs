@@ -318,7 +318,7 @@ try {
   check("账本无 CNY 字段", /"cny"|"usedCNY"/i.test(text), false);
   check("账本记录了模型键", raw.sessions.s1.steps["1:1"].m, "deepseek/deepseek-v4-pro");
   check("账本记录了 4 类 token", raw.sessions.s1.steps["1:1"].t, [2000000, 100000, 0, 0]);
-  check("账本版本 2", raw.version, 2);
+  check("账本版本 3", raw.version, 3);
   check("账本带单会话字段", Array.isArray(Object.keys(raw.sessionLimits)), true);
 
   /* 9. 重启后按新汇率现算 ----------------------------------------------- */
@@ -487,7 +487,7 @@ try {
   check("旧字段 topUp 保留（废弃不再当上限），limit 当作自设全局上限", [st16.topUp, st16.limit, st16.ceilingSource, st16.ceiling], [500, 300, "limit", 300]);
   check("旧账本的上限不高，未阻断", st16.blocked, false);
   const migrated = JSON.parse(readFileSync(legacyFile, "utf8"));
-  check("落盘后升级为 version 2", migrated.version, 2);
+  check("落盘后升级为 version 3", migrated.version, 3);
   check("升级后旧字段仍在文件里", [migrated.topUp, migrated.limit], [500, 300]);
   check(
     "升级后共用默认字段消失、改成该会话自己的上限",
@@ -495,7 +495,45 @@ try {
     [undefined, 50, {}],
   );
   check("旧账本会话的 token 未丢", migrated.sessions["s-legacy"].steps["1:2"].t, [0, 1000000, 0, 0]);
-  check("迁移后磁盘上有基线字段（空）", [migrated.archiveBaseline, migrated.sessions["s-legacy"].baselineByModel], [{}, {}]);
+  check("迁移后磁盘上有基线字段（空）", [migrated.globalBaseline, migrated.sessions["s-legacy"].baselineByModel], [{}, {}]);
+
+  /* 16b. 0.2.4 形状的账本：全局重置把基线写进了每个会话，迁移要分开且不改变显示值 --- */
+  const v2File = join(dir, "legacy-024.json");
+  const t024 = 1790777826908;
+  writeFileSync(
+    v2File,
+    JSON.stringify({
+      version: 2,
+      rate: 7.2,
+      symbol: "¥",
+      limit: 0,
+      guard: true,
+      resetAt: t024,
+      archiveBaseline: {},
+      sessions: {
+        "s-a": {
+          lastSeq: 1,
+          resetAt: t024,
+          steps: { "1:1": { t: [1000000, 0, 0, 0], m: "deepseek/deepseek-v4-pro" } },
+          baselineByModel: { "deepseek/deepseek-v4-pro": [1000000, 0, 0, 0] },
+        },
+        "s-b": {
+          lastSeq: 1,
+          resetAt: 0,
+          steps: { "1:1": { t: [500000, 0, 0, 0], m: "deepseek/deepseek-v4-pro" } },
+        },
+      },
+    }),
+  );
+  const ctx16b = makeCtx(makeAccount({ value: [cny(1000)] }));
+  apply(ctx16b, { storeFile: v2File });
+  const st16b = await stateOf(ctx16b, "s-a");
+  near("0.2.4 → 3：全局本次保持不变", st16b.usedCNY, 4.752);
+  near("0.2.4 → 3：全局累计不变", st16b.totalCNY, 14.256);
+  near("被全局重置误伤的单会话恢复自己的周期", st16b.session.usedCNY, 9.504);
+  const migrated2 = JSON.parse(readFileSync(v2File, "utf8"));
+  check("0.2.4 的旧基线并进全局基线", migrated2.globalBaseline["deepseek/deepseek-v4-pro"], [1000000, 0, 0, 0]);
+  check("全局重置留下的会话基线被清掉", [migrated2.sessions["s-a"].baselineByModel, migrated2.sessions["s-a"].resetAt], [{}, 0]);
 
   /* 17. 重置计费起点：单会话 / 全局 / 累计保留 / 上限比的是本次 ----------- */
   console.log("\n[17] 重置计费起点（单会话与全局）");
@@ -523,17 +561,21 @@ try {
 
   const afterA = await post(ctx17, "/plugin-billing/reset", { scope: "session", sessionId: "sA" });
   near("单会话重置只清该会话的本次", afterA.session.usedCNY, 0);
-  near("单会话重置后全局本次 = 另一个会话", afterA.usedCNY, 4.752);
+  near("单会话重置不动全局本次", afterA.usedCNY, 14.256);
   near("单会话重置不动累计", afterA.totalCNY, 14.256);
   near("单会话重置不动会话累计", afterA.session.totalCNY, 9.504);
-  check("重置后不再阻断（不必调高上限）", afterA.blocked, false);
-  check("重置后守卫放行", (await preStep(ctx17, payloadOf("sA"))).kind, "enter");
+  check("单会话重置不让全局上限放行", [afterA.blocked, afterA.blockScope], [true, "global"]);
+  check("全局仍越线 → 仍拒绝", (await preStep(ctx17, payloadOf("sA"))).kind, "reject");
+  near("另一个会话没被牵连", (await stateOf(ctx17, "sB")).session.usedCNY, 4.752);
 
   const afterAll = await post(ctx17, "/plugin-billing/reset", {});
   near("全局重置后本次 = 0", afterAll.usedCNY, 0);
   near("全局重置后累计不变", afterAll.totalCNY, 14.256);
+  check("全局重置后不再阻断（不必调高上限）", afterAll.blocked, false);
+  check("全局重置后守卫放行", (await preStep(ctx17, payloadOf("sA"))).kind, "enter");
   const rows17 = Object.fromEntries(afterAll.sessions.map((row) => [row.id, row]));
-  check("每个会话的本次都前移成 0", [rows17.sA.cny, rows17.sB.cny], [0, 0]);
+  near("全局重置不碰会话 sB 的本次（独立）", rows17.sB.cny, 4.752);
+  near("全局重置不碰会话 sA 的本次（它自己重置过）", rows17.sA.cny, 0);
   near("会话 sA 的累计保留", rows17.sA.totalCNY, 9.504);
   near("会话 sB 的累计保留", rows17.sB.totalCNY, 4.752);
 
@@ -547,7 +589,15 @@ try {
   near("全局累计 = 全部历史", st17c.totalCNY, 15.2064);
   check("远未到上限 → 放行", (await preStep(ctx17, payloadOf("sA"))).kind, "enter");
   const disk17 = JSON.parse(readFileSync(join(dir, "reset.json"), "utf8"));
-  check("基线已落盘", [disk17.archiveBaseline, disk17.sessions.sA.baselineByModel["deepseek/deepseek-v4-pro"]], [{}, [1000000, 0, 0, 0]]);
+  check(
+    "全局基线与单会话基线各存各的",
+    [
+      disk17.globalBaseline["deepseek/deepseek-v4-pro"],
+      disk17.sessions.sA.baselineByModel["deepseek/deepseek-v4-pro"],
+      disk17.sessions.sB.baselineByModel,
+    ],
+    [[1500000, 0, 0, 0], [1000000, 0, 0, 0], {}],
+  );
   check("账本仍只存 token（没有金额字段）", ["usedCNY", "totalCNY", "cny"].every((key) => !(key in disk17)), true);
 } finally {
   try {

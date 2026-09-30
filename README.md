@@ -37,6 +37,7 @@
 
 - 上限比的是**本次**：从最近一次重置算起的费用。**累计**是全部历史（含已经前移出去的部分），只作参考，**永不归零**。
 - 两个角标右边各有一个 **↺ 重置计费起点**（本会话一个、全局一个）。重置 = **基线前移**：把当前用量记成新起点，本次归零、不再阻断，**历史只进累计，token 记录一条都不丢**（金额永远现算，所以改了汇率 / 单价，本次与累计会一起重算）。
+- **两个 ↺ 彻底分开、互不影响**（0.2.5 起）：**全局 ↺** 只把全局的本次归零，各会话的本次与它们自己的 ↺ 状态分毫不动；**某个会话的 ↺** 只把那个会话的本次归零，全局本次与其它会话都不受影响。所以「谁的上限越线，就重置谁」——全局上限越线要点全局 ↺，某个会话的上限越线点它自己那行的 ↺ 即可。
 - 面板里也能重置：概览第二行显示累计，右边就是全局 ↺；「单会话上限」每行末尾有 ↺（只重置该会话）；超额确认框里也加了 ↺——充值后不必再去调高上限。
 - 想彻底清空历史（累计也归零）用面板底部的**清空历史**：那是硬重置，会删掉全部 token 记录，**不可恢复**。
 
@@ -49,8 +50,8 @@
 ## 数据
 
 - 账本：`~/.dsh/billing/ledger.json`（可用插件 config 的 `storeFile` 覆盖），原子写盘 + 1200ms 防抖。
-- `version: 2`：只存 token 与模型键（不含金额），外加 `limit`（你自设的全局上限，原值）、`sessionLimits`（**按会话各存各的**上限）、`sessionAllow`（已放行的会话）、`archiveBaseline` 与各会话的 `baselineByModel`（**重置计费起点前移出去的 token**，本次 = 全部 − 基线）、`resetAt`；0.1 的 `topUp`（已充金额）保留但已废弃，0.2.1 的 `sessionLimit`（对所有会话一起生效的默认上限）已被 `sessionLimits` 取代。全局有效上限由 `limit` 与余额现算：`ceilingSource` 取 `unset`（未设） / `limit`（自设） / `limit-clamped`（超过余额被夹）；单会话的 `ceilingSource` 取 `own`（该会话自己设了） / `none`（该会话没设）。
-- 旧账本自动升级：读到 0.1 的 `version: 1` 文件时会就地补成 `version: 2` 并**立即落盘**（不等下一次用量变化），会话、步骤与 token 全部保留，金额仍按当前汇率/单价现算；若旧账本里设过 `sessionLimit`（共用默认上限），它会被落到当时已有记录的每个会话上，然后字段消失——限额不丢，且从此各自独立可改。
+- `version: 3`：只存 token 与模型键（不含金额），外加 `limit`（你自设的全局上限，原值）、`sessionLimits`（**按会话各存各的**上限）、`sessionAllow`（已放行的会话）、`globalBaseline`（**全局 ↺ 前移出去的 token**）与各会话的 `baselineByModel`（**该会话 ↺ 前移出去的 token**）、`resetAt`；全局本次 = 全部 − `globalBaseline`，某会话本次 = 它的 steps − 它的 `baselineByModel`，两个口径互不影响。0.1 的 `topUp`（已充金额）保留但已废弃，0.2.1 的 `sessionLimit`（对所有会话一起生效的默认上限）已被 `sessionLimits` 取代。全局有效上限由 `limit` 与余额现算：`ceilingSource` 取 `unset`（未设） / `limit`（自设） / `limit-clamped`（超过余额被夹）；单会话的 `ceilingSource` 取 `own`（该会话自己设了） / `none`（该会话没设）。
+- 旧账本自动升级：读到 0.1 的 `version: 1`、或 0.2.4 的 `version: 2` 文件时会就地补成 `version: 3` 并**立即落盘**（不等下一次用量变化），会话、步骤与 token 全部保留，金额仍按当前汇率/单价现算。若旧账本里设过 `sessionLimit`（共用默认上限），它会被落到当时已有记录的每个会话上，然后字段消失——限额不丢，且从此各自独立可改。0.2.4 的旧基线（`archiveBaseline` + 各会话 `baselineByModel`）会并进 `globalBaseline`（全局本次保持原值不变），其中**由全局 ↺ 写下的会话基线会被清掉**——那些会话本来就是被全局重置误伤的，升级后立刻恢复成它们自己的计费周期。
 - 最多保留 40 个会话的明细，更早的会话折叠进按模型的归档（金额不受影响）。
 
 ## HTTP 接口（宿主半边，前缀 `/plugin-billing`）
@@ -60,7 +61,7 @@
 | GET | `/state?session=<id>&refresh=1` | 角标/面板所需的全部状态；带 `session` 时附带该会话的用量与上限，`refresh=1` 强制刷新余额 |
 | POST | `/config` | 写入汇率、守卫、**全局上限（`{limit}`，0 = 不设）**、模型单价覆盖（`{price:{key,value}}` / `{price:{key,reset:true}}`）、**某个会话自己的上限（`{sessionId, sessionLimitFor}`，传 0 清除该会话的上限）**；上限被余额夹取时响应带 `limitClamped: true`。0.2.1 的 `{sessionLimit}`（共用默认上限）已废弃、被忽略 |
 | POST | `/override` | `{mode:"once"｜"session"｜"off"｜"reset", sessionId?}` 放行 / 清除放行 |
-| POST | `/reset` | `{scope:"session"｜"global", sessionId?}` **重置计费起点**（默认软重置 = 基线前移：本次归零、历史只进累计、token 一条不丢）；`{hard:true}` 才是旧的**清空历史**（累计一起归零，不可恢复） |
+| POST | `/reset` | `{scope:"session"｜"global", sessionId?}` **重置计费起点**（默认软重置 = 基线前移：本次归零、历史只进累计、token 一条不丢；`scope:"global"` 只动全局起点，各会话自己的起点不受影响，反之亦然）；`{hard:true}` 才是旧的**清空历史**（累计一起归零，不可恢复） |
 | GET | `/pricing?q=` | 价目表检索（精确命中优先） |
 | GET | `/diag` | 诊断：`clientModules` 是否已把浏览器半边收进启动图，以及实时余额、自设全局上限与单会话上限表、本次/累计金额与各会话基线 |
 
@@ -90,8 +91,8 @@
 
 ```powershell
 node tools/build-pricing.mjs "<pi-ai>/dist/providers/data"   # 重新生成 lib/pricing.json
-node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 自设上限与夹取 / 守卫 / 路由 / 持久化 / 旧账本迁移 / 重置计费起点（142 项）
-node tools/self-test-client.mjs   # 浏览器：模块外壳 / 槽位 / 双角标与 ↺、侧栏余额、面板文案与「单会话上限」独立段、本次与累计（99 项）
+node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 自设上限与夹取 / 守卫 / 路由 / 持久化 / 旧账本迁移 / 重置计费起点（全局与单会话互不影响）（151 项）
+node tools/self-test-client.mjs   # 浏览器：模块外壳 / 槽位 / 双角标与 ↺、侧栏余额、面板文案与「单会话上限」独立段、本次与累计 / 两个 ↺ 互不牵连（102 项）
 node tools/probe-hmr.mjs          # 核对「运行中的宿主」是否已发布本地这版 client.js（无需刷新/重启）
 ```
 
