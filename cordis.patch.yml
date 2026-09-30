@@ -5,7 +5,9 @@
 # package.json 里的 dsh.client 声明让浏览器半边（exports "./client"，
 # 由宿主 /plugins 的组合路由 /plugins/??yoka-dsh-billing/client.js&rev=<rev> 提供）
 # 在 Web GUI 里加载：
-# 它在 conversation.composer.dock 槽位注册费用角标（就落在 token 环左侧）。
+# 它在 conversation.composer.dock 槽位注册两个费用角标（本会话 + 全局，就落在 token 环左侧），
+# 在 sidebar.footer.action 槽位注册余额入口（左侧边栏底部、设置按钮旁），
+# 并在 shell.overlay 槽位注册整帧面板 / 超额确认框（portal 到 body）。
 #
 # 安装：把本包放进 profile 的 node_modules（link: 或拷贝），再把下面的 id 加进
 # profile package.json 的 dsh.profile.bundles。
@@ -14,6 +16,5 @@
       name: 'yoka-dsh-billing'
       config:
         rate: 7.2
-        topUp: 0
-        limit: 0
+        sessionLimit: 0
         guard: true

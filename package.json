@@ -1,7 +1,7 @@
 {
   "name": "yoka-dsh-billing",
-  "version": "0.1.0",
-  "description": "DSH plugin: prices tokens from the official model price table, shows the running cost beside the composer's context meter, and blocks a turn past the ceiling you set.",
+  "version": "0.2.0",
+  "description": "DSH plugin: prices tokens from the official model price table, shows the per-session and global running cost beside the composer's context meter, mirrors your DeepSeek account balance in the sidebar, and blocks a turn past the balance or a per-session ceiling.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

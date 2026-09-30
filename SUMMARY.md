@@ -15,6 +15,17 @@
 5. 费用口径：算**总费用**；
 6. 角标可点击，弹出设置面板。
 
+## 2b. 追加需求与拍板（0.2.0）
+
+> 让该插件新增余额显示，直接显示在左侧边栏下部 在对话框下的角标中新增单个任务的计费和单个任务上限（即单个会话）  直接放在原形式左边（单个任务计费 全局计费  两个左侧都有颜色指示） 弹出界面不需要设置已充金额，因为上限就是余额
+
+四条拍板：
+
+1. 余额口径 = **充值余额 + 赠金** 合计；
+2. 单会话上限 = **每个会话可单独设，并有一个默认值**；
+3. 余额拿不到时 = **不阻断**，角标显示 `—`；
+4. 颜色 = **三档：绿 <60% / 橙 60–90% / 红 ≥90%**。
+
 ## 3. 实现
 
 ### 形态
@@ -27,7 +38,7 @@
 | 浏览器 | `lib/client.js` | Web GUI 页面 | `exports["./client"]` + `dsh.client.platform: "web"` |
 | 装载 | `cordis.patch.yml` | — | `dsh.bundle.patch` |
 
-浏览器半边是手写的 `window.__ModuleLoader__.load({...})` 工厂，**只 require `react`**，不需要构建步骤；宿主半边**只用 node 内置模块**（`node:fs` / `node:os` / `node:path` / `node:url`），没有任何 `@deepseek-ai/*` 运行时依赖——因此也不存在 peer 版本范围把预发布宿主挡在外面的经典坑。
+浏览器半边是手写的 `window.__ModuleLoader__.load({...})` 工厂，**只 require `react` 与 `react-dom`**，不需要构建步骤；宿主半边**只用 node 内置模块**（`node:fs` / `node:os` / `node:path` / `node:url`），没有任何 `@deepseek-ai/*` 运行时依赖——因此也不存在 peer 版本范围把预发布宿主挡在外面的经典坑。唯一的外部宿主服务是**可选**依赖 `ctx.get("deepseekAccount")`（余额），拿不到就退化为「无全局上限」。
 
 ### 计费
 
@@ -39,30 +50,33 @@
 
 ### 上限与阻断
 
-- 上限 = `min(自设上限, 已充金额)`；`已充金额` 为 0 时视为未设上限（角标显示「未设上限」）。
-- 阻断点：宿主 `agent/pre-step` waterfall 返回 `{ kind: "reject" }` —— 该轮直接结束，**不会发出 LLM 请求**。
-- 处置：超额时先弹确认框（一次性放行 / 本会话放行 / 提高上限 / 暂不放行），放行只影响后续请求。
+- **全局上限 = DeepSeek 账号余额 = 充值余额 + 赠金**（宿主 `deepseekAccount.getBalance(meta)`，60s TTL + 60s 轮询，面板可手动刷新）。
+- **单会话上限**：一个默认值（`sessionLimit`，对所有会话生效）+ 按会话覆盖（`sessionLimits[id]`）；两者都为 0 = 不设。
+- 余额取不到 / 为 0 → **不阻断**（`balance-unavailable` / `balance-empty`），避免把还能用的账号锁死；全局角标显示 `—`。
+- 阻断点：宿主 `agent/pre-step` waterfall 返回 `{ kind: "reject" }` —— 该轮直接结束，**不会发出 LLM 请求**；`blockScope` 区分 `global`（余额）与 `session`（单会话）。
+- 处置：超额时先弹确认框（一次性放行 / 本会话放行 / 去充值 / 提高上限 / 查看余额 / 暂不放行），放行只影响后续请求；**「本会话放行」不会绕过全局余额**。
 
 ### 展示
 
-- 落点：客户端槽位 `conversation.composer.dock`（`id: "billing"`、`order: 20`），与官方 `ContextMeter`（token 环）**同一行、在其左侧**——这就是「token 旁边」。
-- 文案：`¥12.36 / ¥50.00`，未设上限时 `¥12.36 / 未设上限`；三态配色（正常 / 80% 警告 / 超额）。
-- 面板：点角标弹出（概览、已充金额、自设上限、汇率、超额阻断开关、模型单价四档覆盖并可恢复官方价、按模型 / 按会话用量明细、保存、用量归零）。面板底色完全不透明（官方菜单面色叠在 `--dsw-alias-bg-layer-1` 上），遮罩 `rgba(0,0,0,.34)`。
+- 角标落点：客户端槽位 `conversation.composer.dock`（`id: "billing"`、`order: 20`），与官方 `ContextMeter`（token 环）**同一行、在其左侧**——这就是「token 旁边」。**两个**角标并排：本会话 `● ¥0.0834 / ¥50.00`、全局 `● ¥12.3600 / ¥1007.20`；未设会话上限显示 `未设`，余额不可用显示 `—`。
+- 余额落点：客户端槽位 `sidebar.footer.action`（`id: "billing-balance"`、`order: 20`）——左侧边栏底部、设置按钮旁，显示 `余额 ¥1007.20`；侧栏收起（56px）时只留一个圆点。
+- 颜色：每个角标左侧一个 6px 圆点，按各自百分比走三档 **绿 <60% / 橙 60–90% / 红 ≥90%**；被阻断的方向显示红色，余额不可用时全局点变灰。
+- 面板：点角标或侧栏余额弹出（概览、账户余额只读明细 + 刷新 + 去充值、单会话默认上限、汇率、超额阻断开关、模型单价四档覆盖并可恢复官方价、按模型用量明细、按会话的用量与单会话上限输入、保存、用量归零）。**0.2 起面板里没有「已充金额 / 自设上限」**——上限就是余额。面板底色完全不透明，并经 `react-dom` 的 `createPortal` 挂到 `document.body`，避免侧栏祖先的 transform 困住 `fixed` 定位。
 
 ### 宿主接口（前缀 `/plugin-billing`）
 
-`GET /state`、`POST /config`、`POST /override`、`POST /reset`、`GET /pricing`、`GET /diag`。守卫接受：同源标记、`Origin` 头、`dsh-auth-` cookie、或环回地址；其余 403。写盘为原子写（tmp + rename）+ 1200ms 防抖。
+`GET /state?session=&refresh=1`、`POST /config`（rate / guard / price / sessionLimit / `{sessionId, sessionLimitFor}`）、`POST /override`（`once` / `session` / `off` / `reset`，可带 `sessionId`）、`POST /reset`、`GET /pricing`、`GET /diag`。守卫接受：同源标记、`Origin` 头、`dsh-auth-` cookie、或环回地址；其余 403。写盘为原子写（tmp + rename）+ 1200ms 防抖。
 
 ## 4. 验证（都是实测，不是推断）
 
 | 证据 | 结果 |
 |---|---|
-| `node tools/self-test.mjs` | **55 通过 / 0 失败**（计价、替换式折叠、汇率改算、上限语义、超额 reject、一次性/整会话放行、守卫、持久化、路由注销） |
-| `node tools/self-test-client.mjs` | **38 通过 / 0 失败**（模块外壳、槽位注册、角标文案、面板字段、确认框按钮、effect 清理） |
-| `GET /plugin-billing/state` | 200，真实数据（`usedCNY`、四类 token、`current.key`、`source: "official"`） |
-| 客户端 Slots inspect | `conversation.composer.dock` occupants 含 `{id: "billing", order: 20, active: true}` |
+| `node tools/self-test.mjs` | **85 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、余额不可用不阻断、全局与单会话上限、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销） |
+| `node tools/self-test-client.mjs` | **74 通过 / 0 失败**（模块外壳、三个槽位注册、双角标文案与颜色点、侧栏余额、面板字段、两种确认框、浮层开关、effect 清理） |
+| `GET /plugin-billing/state` | 200，真实数据（`usedCNY`、四类 token、`current.key`、`source: "official"`、`balance` 字段） |
+| 客户端 Slots inspect | `conversation.composer.dock` occupants 含 `{id: "billing", order: 20, active: true}`；`sidebar.footer.action` 含 `{id: "billing-balance", order: 20}` |
 | `node tools/probe-hmr.mjs` | 本地 `client.js` revision == 运行中宿主发行的 revision（HMR 已跟到） |
-| 账本 | 只有 token 与模型键，无金额字段 |
+| 账本 | `version: 2`，只有 token 与模型键，无金额字段 |
 
 ## 5. 已知边界
 
@@ -76,12 +90,12 @@
 ```
 package.json            包清单（dsh.bundle + dsh.client）
 cordis.patch.yml        装载补丁（- insert: yoka-dsh-billing）
-lib/index.js            宿主半边：折叠、计价、上限、守卫、HTTP 接口
-lib/client.js           浏览器半边：角标 + 面板 + 超额确认框
+lib/index.js            宿主半边：折叠、计价、余额、上限、守卫、HTTP 接口
+lib/client.js           浏览器半边：双角标 + 侧栏余额 + 面板 + 超额确认框
 lib/pricing.json        官方价目表（生成物）
 tools/build-pricing.mjs 从 pi-ai 数据生成 pricing.json
-tools/self-test.mjs     宿主自测（55 项）
-tools/self-test-client.mjs 浏览器自测（38 项）
+tools/self-test.mjs     宿主自测（85 项）
+tools/self-test-client.mjs 浏览器自测（74 项）
 tools/probe-hmr.mjs     核对运行中宿主已发行本地这版 client.js
 tools/probe-http.mjs    HTTP 探活
 submission/             投稿物料（见下）

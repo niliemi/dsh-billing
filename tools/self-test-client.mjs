@@ -1,5 +1,6 @@
 /**
- * 浏览器半边自测：模块外壳、inject/apply、槽位注册、以及角标/面板/确认框的渲染文本。
+ * 浏览器半边自测：模块外壳、inject/apply、三个槽位注册，以及
+ * 双角标 / 侧边栏余额 / 面板 / 超额确认框的渲染文本。
  * 用法：node tools/self-test-client.mjs
  */
 import { readFileSync } from "node:fs";
@@ -21,7 +22,7 @@ function check(label, actual, expected) {
 
 /* --------------------------- 假 React（只够渲染一次） --------------------------- */
 
-function makeReact(seed) {
+function makeReact(seed = []) {
   const queue = [...seed];
   let cursor = 0;
   const effects = [];
@@ -44,9 +45,18 @@ function makeReact(seed) {
     },
   };
   react.__effects = effects;
-  react.__cursor = () => cursor;
+  // 假 React 没有渲染边界，测试里每次调用组件前手动重置游标。
+  react.__reset = () => {
+    cursor = 0;
+  };
   return react;
 }
+
+const reactDomStub = {
+  createPortal(node) {
+    return node;
+  },
+};
 
 /** 从 createElement 假树里收集所有文本（会调用函数组件）。 */
 function texts(node, out = []) {
@@ -92,6 +102,7 @@ function loadPlugin(react) {
   const requireStub = (id) => {
     requireCalls.push(id);
     if (id === "react") return react;
+    if (id === "react-dom") return reactDomStub;
     throw new Error(`意外的 require：${id}`);
   };
   return { module: loaded, exports: loaded.factory(requireStub) };
@@ -102,23 +113,25 @@ requireCalls = [];
 const react = makeReact([]);
 const { module: wrapper, exports: plugin } = loadPlugin(react);
 check("bundle id", wrapper.id, "yoka-dsh-billing");
-check("只 require 了 react", requireCalls, ["react"]);
+check("只 require react 与 react-dom", requireCalls, ["react", "react-dom"]);
 check("inject 是服务名列表", plugin.inject, ["slots"]);
 check("导出 apply", typeof plugin.apply, "function");
-check("导出组件", typeof plugin.BillingDock, "function");
+check("导出角标组件", typeof plugin.BillingDock, "function");
+check("导出侧边栏组件", typeof plugin.BalanceAction, "function");
+check("导出浮层组件", typeof plugin.BillingOverlay, "function");
 
 console.log("\n[2] 槽位注册");
-let injected = null;
-let registered = null;
+const injected = [];
+const registered = [];
 let disposerCalls = 0;
 const ctx = {
   slots: {
     inject(name, callback) {
-      injected = name;
+      injected.push(name);
       callback();
     },
     register(definition, component) {
-      registered = { definition, component };
+      registered.push({ definition, component });
       return () => {
         disposerCalls += 1;
       };
@@ -126,29 +139,63 @@ const ctx = {
   },
 };
 plugin.apply(ctx);
-check("inject 到 composer.dock", injected, "conversation.composer.dock");
-check("槽位名", registered.definition.name, "conversation.composer.dock");
-check("条目 id", registered.definition.id, "billing");
-check("排序值", registered.definition.order, 20);
-check("注册的组件就是导出组件", registered.component === plugin.BillingDock, true);
+check("注册三个槽位", injected, ["conversation.composer.dock", "sidebar.footer.action", "shell.overlay"]);
+check("角标槽位名", registered[0].definition.name, "conversation.composer.dock");
+check("角标条目 id", registered[0].definition.id, "billing");
+check("角标排序值", registered[0].definition.order, 20);
+check("角标组件就是导出组件", registered[0].component === plugin.BillingDock, true);
+check("侧边栏槽位名", registered[1].definition.name, "sidebar.footer.action");
+check("侧边栏条目 id", registered[1].definition.id, "billing-balance");
+check("侧边栏组件就是导出组件", registered[1].component === plugin.BalanceAction, true);
+check("浮层槽位名", registered[2].definition.name, "shell.overlay");
+check("浮层条目 id", registered[2].definition.id, "billing-panel");
+check("浮层组件就是导出组件", registered[2].component === plugin.BillingOverlay, true);
+check("三个槽位都返回清理函数", typeof registered[2].component === "function", true);
 
-/* -------------------------------- 渲染角标 -------------------------------- */
+/* -------------------------------- 状态夹具 -------------------------------- */
 
 const state = {
   ok: true,
+  version: 2,
   symbol: "¥",
   rate: 7.2,
-  topUp: 100,
-  limit: 50,
-  ceiling: 50,
-  ceilingSource: "limit",
+  guard: true,
+  balance: {
+    available: true,
+    cny: 1007.2,
+    bonusCNY: 7.2,
+    wallets: [
+      { currency: "CNY", amount: 1000, cny: 1000, bonus: false },
+      { currency: "USD", amount: 1, cny: 7.2, bonus: true },
+    ],
+    error: "",
+    at: 1,
+    stale: false,
+    topUpUrl: "https://platform.deepseek.com/top_up",
+    signedIn: true,
+  },
+  ceiling: 1007.2,
+  ceilingAvailable: true,
+  ceilingSource: "balance",
   usedCNY: 12.3552,
   usedUSD: 1.716,
   tokens: [2000000, 1100000, 0, 0],
-  remainingCNY: 37.6448,
-  percent: 24.7104,
+  remainingCNY: 994.8448,
+  percent: 1.2267,
   blocked: false,
-  guard: true,
+  blockScope: null,
+  sessionLimit: 20,
+  session: {
+    id: "session-abc",
+    usedCNY: 12.3552,
+    usedUSD: 1.716,
+    tokens: [2000000, 1100000, 0, 0],
+    ceiling: 50,
+    ceilingSource: "override",
+    percent: 24.7104,
+    allowed: false,
+    blocked: false,
+  },
   overrideOnce: false,
   overrideSession: false,
   lastBlockAt: 0,
@@ -162,74 +209,180 @@ const state = {
       cny: 12.3552,
       price: [1.32, 3.96, 0.044, 0],
       source: "official",
+      percent: 1.2267,
     },
   ],
-  sessions: [{ id: "session-abc", tokens: [2000000, 1100000, 0, 0], usd: 1.716, cny: 12.3552, updated: 1, lastSeen: 12 }],
+  sessions: [
+    {
+      id: "session-abc",
+      tokens: [2000000, 1100000, 0, 0],
+      usd: 1.716,
+      cny: 12.3552,
+      ceiling: 50,
+      ceilingSource: "override",
+      percent: 24.7104,
+      allowed: false,
+      updated: 1,
+      lastSeen: 12,
+    },
+  ],
   ledgerFile: "C:/Users/x/.dsh/billing/ledger.json",
   pricing: { count: 605, generatedAt: "2026", unit: "USD / 百万 token" },
   updatedAt: 1,
 };
 
-console.log("\n[3] 角标文案（（货币符号）（数值）/（限制费用））");
+console.log("\n[3] 两个角标（本会话 + 全局，各自带颜色点）");
 {
-  const panelReact = makeReact([state, "", false, false, ""]);
-  const { exports: p2 } = loadPlugin(panelReact);
-  const rendered = p2.BillingDock();
+  const r = makeReact([state, ""]);
+  const { exports: p } = loadPlugin(r);
+  const rendered = p.BillingDock({ sessionId: "session-abc" });
   const list = texts(rendered);
-  check("显示 ¥12.36 / ¥50.00", list.includes("¥12.36 / ¥50.00"), true);
-  check("角标是 button", rendered.props.children[0].type, "button");
-  check("按钮 title 含上限", /上限 ¥50\.00/.test(rendered.props.children[0].props.title), true);
+  check("本会话角标 ¥12.36 / ¥50.00", list.includes("¥12.36 / ¥50.00"), true);
+  check("全局角标 ¥12.36 / ¥1007.20", list.includes("¥12.36 / ¥1007.20"), true);
+  const chips = rendered.props.children;
+  check("两个都是 button", [chips[0].type, chips[1].type], ["button", "button"]);
+  check("本会话角标 title", /本会话计费/.test(chips[0].props.title), true);
+  check("全局角标 title", /账户余额 ¥1007\.20/.test(chips[1].props.title), true);
+  check("每个角标一个颜色点", [chips[0].props.children.length, chips[1].props.children.length], [2, 2]);
+  check("颜色点是 6px 圆", chips[0].props.children[0].props.style.borderRadius, 999);
 }
 
-console.log("\n[4] 未设上限时的文案");
+console.log("\n[4] 未设会话上限 / 余额不可用");
 {
-  const noCeiling = { ...state, topUp: 0, limit: 0, ceiling: 0, ceilingSource: "none", percent: 0 };
-  const r = makeReact([noCeiling, "", false, false, ""]);
+  const partial = {
+    ...state,
+    session: { ...state.session, ceiling: 0, ceilingSource: "none", percent: 0 },
+    balance: { ...state.balance, available: false, cny: null, bonusCNY: 0, wallets: [], error: "账户服务不可用" },
+    ceiling: 0,
+    ceilingAvailable: false,
+    ceilingSource: "balance-unavailable",
+    percent: 0,
+  };
+  const r = makeReact([partial, ""]);
   const { exports: p } = loadPlugin(r);
-  check("显示「未设上限」", texts(p.BillingDock()).includes("¥12.36 / 未设上限"), true);
+  const list = texts(p.BillingDock({ sessionId: "session-abc" }));
+  check("会话未设上限", list.includes("¥12.36 / 未设"), true);
+  check("余额不可用显示破折号", list.includes("¥12.36 / —"), true);
 }
 
 console.log("\n[5] state 未就绪 → 不渲染");
 {
-  const r = makeReact([null, "", false, false, ""]);
+  const r = makeReact([null, ""]);
   const { exports: p } = loadPlugin(r);
-  check("轮询未返回时返回 null", p.BillingDock(), null);
+  check("轮询未返回时返回 null", p.BillingDock({ sessionId: "session-abc" }), null);
 }
 
-console.log("\n[6] 面板字段");
+console.log("\n[6] 左侧边栏底部余额");
 {
-  const r = makeReact([state, "", true, false, ""]);
+  const r = makeReact([state, ""]);
   const { exports: p } = loadPlugin(r);
-  const list = texts(p.BillingDock());
-  for (const label of ["计费", "已充金额", "自设上限", "汇率", "超额阻断", "模型单价", "恢复官方价", "保存", "用量归零", "按模型用量（点击可编辑其单价）"]) {
+  const wide = p.BalanceAction({ wide: true });
+  const list = texts(wide);
+  check("显示余额", list.includes("余额 ¥1007.20"), true);
+  check("title 含赠金", /其中赠金 ¥7\.20/.test(wide.props.title), true);
+  r.__reset();
+  const collapsed = p.BalanceAction({ wide: false });
+  check("收起态只留圆点", texts(collapsed), []);
+  check("收起态仍是 button", collapsed.type, "button");}
+
+console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
+{
+  const r = makeReact([]);
+  const { exports: p } = loadPlugin(r);
+  const list = texts(p.Panel({ state, sessionId: "session-abc", onClose() {}, onSaved() {} }));
+  for (const label of [
+    "计费",
+    "全局计费 · 上限 = 账户余额",
+    "账户余额",
+    "余额合计",
+    "单会话默认上限",
+    "汇率",
+    "超额阻断",
+    "模型单价",
+    "恢复官方价",
+    "保存",
+    "用量归零",
+    "按模型用量（点击可编辑其单价）",
+    "会话用量与单会话上限（回车或移开焦点即生效）",
+    "刷新",
+    "去充值",
+  ]) {
     check(`含「${label}」`, list.includes(label), true);
   }
-  check("概览数字带货币符号", list.filter((t) => t === "¥12.36").length >= 2, true);
-  check("上限来自自设上限", list.some((t) => t.includes("上限取值：自设上限")), true);
+  check("不再有「已充金额」", list.includes("已充金额"), false);
+  check("不再有「自设上限」", list.includes("自设上限"), false);
   check("明细列出模型", list.includes("deepseek/deepseek-v4-pro"), true);
   check("明细列出会话", list.includes("session-abc"), true);
   check("官方价四档", list.some((t) => t.includes("1.32 / 3.96 / 0.044 / 0.000")), true);
+  check("充值余额行", list.includes("CNY 1000.00 ≈ ¥1000.00"), true);
+  check("赠金行带标记", list.includes("USD 1.00（赠金） ≈ ¥7.20"), true);
+  check("赠金行左侧标签", list.includes("赠金"), true);
+  check("全局上限不可编辑的说明", list.some((t) => t.includes("全局上限固定等于账户余额")), true);
 }
 
-console.log("\n[7] 超额确认框");
+console.log("\n[8] 超余额确认框（全局）");
 {
-  const blockedState = { ...state, blocked: true, lastBlockAt: 1712345678000, usedCNY: 50.5, percent: 100 };
-  const r = makeReact([blockedState, "", false, true, ""]);
+  const blockedState = {
+    ...state,
+    blocked: true,
+    blockScope: "global",
+    usedCNY: 1007.5,
+    percent: 100,
+    lastBlockAt: 1712345678000,
+    lastBlock: { at: 1712345678000, scope: "global", sessionId: "session-abc" },
+  };
+  const r = makeReact([]);
   const { exports: p } = loadPlugin(r);
-  const list = texts(p.BillingDock());
-  check("标题", list.includes("费用已达上限"), true);
+  const list = texts(p.ConfirmDialog({ state: blockedState, onClose() {}, onOverride() {}, onRaise() {}, onSaved() {} }));
+  check("标题", list.includes("已达账户余额上限"), true);
   check("一次性放行", list.includes("一次性放行"), true);
   check("本会话放行", list.includes("本会话放行"), true);
-  check("提高上限", list.includes("提高上限"), true);
+  check("去充值", list.includes("去充值"), true);
+  check("查看余额（而非提高上限）", list.includes("查看余额"), true);
   check("暂不放行", list.includes("暂不放行"), true);
-  check("展示已用/上限", list.some((t) => t.includes("已用 ¥50.50 / 上限 ¥50.00")), true);
+  check("展示全局已用/余额", list.some((t) => t.includes("全局已用 ¥1007.50 / 账户余额 ¥1007.20")), true);
 }
 
-console.log("\n[8] 轮询副作用已注册且可清理");
+console.log("\n[9] 单会话超限确认框");
 {
-  const r = makeReact([state, "", false, false, ""]);
+  const blockedState = {
+    ...state,
+    blocked: true,
+    blockScope: "session",
+    session: { ...state.session, usedCNY: 52.4, ceiling: 50, percent: 100, blocked: true },
+  };
+  const r = makeReact([]);
   const { exports: p } = loadPlugin(r);
-  p.BillingDock();
+  const list = texts(p.ConfirmDialog({ state: blockedState, onClose() {}, onOverride() {}, onRaise() {}, onSaved() {} }));
+  check("标题", list.includes("本会话已达上限"), true);
+  check("提高上限", list.includes("提高上限"), true);
+  check("会话范围不给去充值", list.includes("去充值"), false);
+  check("展示会话已用/上限", list.some((t) => t.includes("本会话已用 ¥52.40 / 上限 ¥50.00")), true);
+  check("本会话放行仍在", list.includes("本会话放行"), true);
+}
+
+console.log("\n[10] 浮层按开关渲染面板 / 确认框");
+{
+  const r = makeReact([0, state, ""]);
+  const { exports: p } = loadPlugin(r);
+  p.ui.set({ open: false, confirm: false, sessionId: "" });
+  r.__reset();
+  check("都不开时返回 null", p.BillingOverlay(), null);
+  p.ui.set({ open: true, sessionId: "session-abc" });
+  r.__reset();
+  const panelTexts = texts(p.BillingOverlay());
+  check("打开时是面板", panelTexts.includes("余额合计"), true);
+  p.ui.set({ open: false, confirm: true, sessionId: "session-abc" });
+  r.__reset();
+  const confirmTexts = texts(p.BillingOverlay());
+  check("blocked=false 时确认框不弹", confirmTexts.includes("已达账户余额上限"), false);
+}
+
+console.log("\n[11] 轮询副作用已注册且可清理");
+{
+  const r = makeReact([state, ""]);
+  const { exports: p } = loadPlugin(r);
+  p.BillingDock({ sessionId: "session-abc" });
   check("注册了 2 个 effect（轮询 + 阻断监听）", r.__effects.length, 2);
   const cleanup = r.__effects[0]();
   check("effect 返回清理函数", typeof cleanup, "function");
