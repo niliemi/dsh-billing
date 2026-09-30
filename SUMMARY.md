@@ -26,6 +26,17 @@
 3. 余额拿不到时 = **不阻断**，角标显示 `—`；
 4. 颜色 = **三档：绿 <60% / 橙 60–90% / 红 ≥90%**。
 
+## 2c. 更正：全局上限≠余额（0.2.1）
+
+> 发现了一个逻辑bug 我要求删去设置已充金额，但未说全局的限额上限就是余额
+
+m00862 的原句「弹出界面不需要设置已充金额，因为上限就是余额」被我误读成「全局上限恒等于余额」，于是把主人 m00001 的核心诉求「可以自己限制最大费用量（不超过所充金额）」删掉了——面板里再也没法自设全局上限。修正后：
+
+- **全局上限由主人自设**（`limit`，面板「全局计费上限」）；**留空 / 0 = 不设上限、不阻断**；
+- 余额**只是边界与参考**：自设值超过余额时被夹到余额（`ceilingSource: "limit-clamped"`，原值保留在账本里，余额涨回来会重新放宽）；余额取不到 / 为 0 时**不夹取**；
+- **单会话上限不受余额夹取**；
+- 确认框全局分支的按钮由「查看余额」统一为「调高上限」。
+
 ## 3. 实现
 
 ### 形态
@@ -50,29 +61,30 @@
 
 ### 上限与阻断
 
-- **全局上限 = DeepSeek 账号余额 = 充值余额 + 赠金**（宿主 `deepseekAccount.getBalance(meta)`，60s TTL + 60s 轮询，面板可手动刷新）。
+- **全局上限由主人自设**（账本 `limit`，面板「全局计费上限」）：填多少就是多少，**留空 / 0 = 不设上限、不阻断**。
+- 余额（宿主 `deepseekAccount.getBalance(meta)`，60s TTL + 60s 轮询，面板可手动刷新）**只是边界与参考**：`费用上限 = min(自设 limit, 余额)`；`ceilingSource` 为 `unset`（未设）/ `limit`（自设生效）/ `limit-clamped`（超过余额被夹，原值仍留在账本里，余额涨回来会自动放宽）。
+- 余额取不到 / 为 0 → **不夹取**（此时你填多少就是多少），也**不阻断**；单会话上限**不受余额夹取**。
 - **单会话上限**：一个默认值（`sessionLimit`，对所有会话生效）+ 按会话覆盖（`sessionLimits[id]`）；两者都为 0 = 不设。
-- 余额取不到 / 为 0 → **不阻断**（`balance-unavailable` / `balance-empty`），避免把还能用的账号锁死；全局角标显示 `—`。
-- 阻断点：宿主 `agent/pre-step` waterfall 返回 `{ kind: "reject" }` —— 该轮直接结束，**不会发出 LLM 请求**；`blockScope` 区分 `global`（余额）与 `session`（单会话）。
-- 处置：超额时先弹确认框（一次性放行 / 本会话放行 / 去充值 / 提高上限 / 查看余额 / 暂不放行），放行只影响后续请求；**「本会话放行」不会绕过全局余额**。
+- 阻断点：宿主 `agent/pre-step` waterfall 返回 `{ kind: "reject" }` —— 该轮直接结束，**不会发出 LLM 请求**；`blockScope` 区分 `global`（全局上限）与 `session`（单会话）。
+- 处置：超额时先弹确认框（一次性放行 / 本会话放行 / 去充值 / 调高上限 / 暂不放行），放行只影响后续请求；**「本会话放行」不会绕过全局上限**。
 
 ### 展示
 
-- 角标落点：客户端槽位 `conversation.composer.dock`（`id: "billing"`、`order: 20`），与官方 `ContextMeter`（token 环）**同一行、在其左侧**——这就是「token 旁边」。**两个**角标并排：本会话 `● ¥0.0834 / ¥50.00`、全局 `● ¥12.3600 / ¥1007.20`；未设会话上限显示 `未设`，余额不可用显示 `—`。
+- 角标落点：客户端槽位 `conversation.composer.dock`（`id: "billing"`、`order: 20`），与官方 `ContextMeter`（token 环）**同一行、在其左侧**——这就是「token 旁边」。**两个**角标并排：本会话 `● ¥0.0834 / ¥50.00`、全局 `● ¥12.3600 / ¥1000.00`；未设上限都显示 `未设`。
 - 余额落点：客户端槽位 `sidebar.footer.action`（`id: "billing-balance"`、`order: 20`）——左侧边栏底部、设置按钮旁，显示 `余额 ¥1007.20`；侧栏收起（56px）时只留一个圆点。
-- 颜色：每个角标左侧一个 6px 圆点，按各自百分比走三档 **绿 <60% / 橙 60–90% / 红 ≥90%**；被阻断的方向显示红色，余额不可用时全局点变灰。
-- 面板：点角标或侧栏余额弹出（概览、账户余额只读明细 + 刷新 + 去充值、单会话默认上限、汇率、超额阻断开关、模型单价四档覆盖并可恢复官方价、按模型用量明细、按会话的用量与单会话上限输入、保存、用量归零）。**0.2 起面板里没有「已充金额 / 自设上限」**——上限就是余额。面板底色完全不透明，并经 `react-dom` 的 `createPortal` 挂到 `document.body`，避免侧栏祖先的 transform 困住 `fixed` 定位。
+- 颜色：每个角标左侧一个 6px 圆点，按各自百分比走三档 **绿 <60% / 橙 60–90% / 红 ≥90%**；被阻断的方向显示红色，全局上限未设时全局点变灰（不阻断）。
+- 面板：点角标或侧栏余额弹出（概览、账户余额只读明细 + 刷新 + 去充值、**全局计费上限**、单会话默认上限、汇率、超额阻断开关、模型单价四档覆盖并可恢复官方价、按模型用量明细、按会话的用量与单会话上限输入、保存、用量归零）。**面板里没有「已充金额」**（0.1 的遗留概念）；上限不再等于余额，而是主人填的数字，超过余额才会被夹。面板底色完全不透明，并经 `react-dom` 的 `createPortal` 挂到 `document.body`，避免侧栏祖先的 transform 困住 `fixed` 定位。
 
 ### 宿主接口（前缀 `/plugin-billing`）
 
-`GET /state?session=&refresh=1`、`POST /config`（rate / guard / price / sessionLimit / `{sessionId, sessionLimitFor}`）、`POST /override`（`once` / `session` / `off` / `reset`，可带 `sessionId`）、`POST /reset`、`GET /pricing`、`GET /diag`。守卫接受：同源标记、`Origin` 头、`dsh-auth-` cookie、或环回地址；其余 403。写盘为原子写（tmp + rename）+ 1200ms 防抖。
+`GET /state?session=&refresh=1`、`POST /config`（rate / guard / **limit（全局上限，0 = 不设）** / price / sessionLimit / `{sessionId, sessionLimitFor}`）、`POST /override`（`once` / `session` / `off` / `reset`，可带 `sessionId`）、`POST /reset`、`GET /pricing`、`GET /diag`。守卫接受：同源标记、`Origin` 头、`dsh-auth-` cookie、或环回地址；其余 403。写盘为原子写（tmp + rename）+ 1200ms 防抖。
 
 ## 4. 验证（都是实测，不是推断）
 
 | 证据 | 结果 |
 |---|---|
-| `node tools/self-test.mjs` | **93 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、余额不可用不阻断、全局与单会话上限、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销、0.1 旧账本迁移落盘） |
-| `node tools/self-test-client.mjs` | **74 通过 / 0 失败**（模块外壳、三个槽位注册、双角标文案与颜色点、侧栏余额、面板字段、两种确认框、浮层开关、effect 清理） |
+| `node tools/self-test.mjs` | **104 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、自设全局上限与「超过余额夹到余额」、未设上限不阻断、余额取不到时不夹取且自设上限照旧生效、全局与单会话上限、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销、0.1 旧账本迁移落盘） |
+| `node tools/self-test-client.mjs` | **76 通过 / 0 失败**（模块外壳、三个槽位注册、双角标文案与颜色点、未设上限文案、侧栏余额、面板字段含「全局计费上限」且不含「已充金额」、两种确认框、浮层开关、effect 清理） |
 | `GET /plugin-billing/state` | 200，真实数据（`usedCNY`、四类 token、`current.key`、`source: "official"`、`balance` 字段） |
 | 客户端 Slots inspect | `conversation.composer.dock` occupants 含 `{id: "billing", order: 20, active: true}`；`sidebar.footer.action` 含 `{id: "billing-balance", order: 20}` |
 | `node tools/probe-hmr.mjs` | 本地 `client.js` revision == 运行中宿主发行的 revision（HMR 已跟到） |
@@ -94,8 +106,8 @@ lib/index.js            宿主半边：折叠、计价、余额、上限、守�
 lib/client.js           浏览器半边：双角标 + 侧栏余额 + 面板 + 超额确认框
 lib/pricing.json        官方价目表（生成物）
 tools/build-pricing.mjs 从 pi-ai 数据生成 pricing.json
-tools/self-test.mjs     宿主自测（93 项）
-tools/self-test-client.mjs 浏览器自测（74 项）
+tools/self-test.mjs     宿主自测（104 项）
+tools/self-test-client.mjs 浏览器自测（76 项）
 tools/probe-hmr.mjs     核对运行中宿主已发行本地这版 client.js
 tools/probe-http.mjs    HTTP 探活
 submission/             投稿物料（见下）

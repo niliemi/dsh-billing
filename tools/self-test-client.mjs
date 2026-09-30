@@ -174,9 +174,12 @@ const state = {
     topUpUrl: "https://platform.deepseek.com/top_up",
     signedIn: true,
   },
-  ceiling: 1007.2,
+  limit: 1000,
+  ceiling: 1000,
   ceilingAvailable: true,
-  ceilingSource: "balance",
+  ceilingSource: "limit",
+  ceilingClamped: false,
+  balanceCap: 1007.2,
   usedCNY: 12.3552,
   usedUSD: 1.716,
   tokens: [2000000, 1100000, 0, 0],
@@ -238,7 +241,7 @@ console.log("\n[3] 两个角标（本会话 + 全局，各自带颜色点）");
   const rendered = p.BillingDock({ sessionId: "session-abc" });
   const list = texts(rendered);
   check("本会话角标 ¥12.36 / ¥50.00", list.includes("¥12.36 / ¥50.00"), true);
-  check("全局角标 ¥12.36 / ¥1007.20", list.includes("¥12.36 / ¥1007.20"), true);
+  check("全局角标 ¥12.36 / ¥1000.00", list.includes("¥12.36 / ¥1000.00"), true);
   const chips = rendered.props.children;
   check("两个都是 button", [chips[0].type, chips[1].type], ["button", "button"]);
   check("本会话角标 title", /本会话计费/.test(chips[0].props.title), true);
@@ -255,14 +258,17 @@ console.log("\n[4] 未设会话上限 / 余额不可用");
     balance: { ...state.balance, available: false, cny: null, bonusCNY: 0, wallets: [], error: "账户服务不可用" },
     ceiling: 0,
     ceilingAvailable: false,
-    ceilingSource: "balance-unavailable",
+    ceilingSource: "unset",
+    ceilingClamped: false,
+    balanceCap: null,
+    limit: 0,
     percent: 0,
   };
   const r = makeReact([partial, ""]);
   const { exports: p } = loadPlugin(r);
   const list = texts(p.BillingDock({ sessionId: "session-abc" }));
   check("会话未设上限", list.includes("¥12.36 / 未设"), true);
-  check("余额不可用显示破折号", list.includes("¥12.36 / —"), true);
+  check("全局未设上限也显示未设", list.filter((t) => t === "¥12.36 / 未设").length, 2);
 }
 
 console.log("\n[5] state 未就绪 → 不渲染");
@@ -292,7 +298,8 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   const list = texts(p.Panel({ state, sessionId: "session-abc", onClose() {}, onSaved() {} }));
   for (const label of [
     "计费",
-    "全局计费 · 上限 = 账户余额",
+    "全局计费 · 上限由你设定，不得超过余额",
+    "全局计费上限",
     "账户余额",
     "余额合计",
     "单会话默认上限",
@@ -317,7 +324,7 @@ console.log("\n[7] 面板字段（不含「已充金额 / 自设上限」）");
   check("充值余额行", list.includes("CNY 1000.00 ≈ ¥1000.00"), true);
   check("赠金行带标记", list.includes("USD 1.00（赠金） ≈ ¥7.20"), true);
   check("赠金行左侧标签", list.includes("赠金"), true);
-  check("全局上限不可编辑的说明", list.some((t) => t.includes("全局上限固定等于账户余额")), true);
+  check("全局上限可自设的说明", list.some((t) => t.includes("超过账户余额") && t.includes("余额只是边界与参考")), true);
 }
 
 console.log("\n[8] 超余额确认框（全局）");
@@ -334,13 +341,14 @@ console.log("\n[8] 超余额确认框（全局）");
   const r = makeReact([]);
   const { exports: p } = loadPlugin(r);
   const list = texts(p.ConfirmDialog({ state: blockedState, onClose() {}, onOverride() {}, onRaise() {}, onSaved() {} }));
-  check("标题", list.includes("已达账户余额上限"), true);
+  check("标题", list.includes("已达你设的全局上限"), true);
   check("一次性放行", list.includes("一次性放行"), true);
   check("本会话放行", list.includes("本会话放行"), true);
   check("去充值", list.includes("去充值"), true);
-  check("查看余额（而非提高上限）", list.includes("查看余额"), true);
+  check("调高上限（而非查看余额）", list.includes("调高上限"), true);
   check("暂不放行", list.includes("暂不放行"), true);
-  check("展示全局已用/余额", list.some((t) => t.includes("全局已用 ¥1007.50 / 账户余额 ¥1007.20")), true);
+  check("展示全局已用/自设上限", list.some((t) => t.includes("全局已用 ¥1007.50 / 你设的上限 ¥1000.00")), true);
+  check("展示余额作为参考", list.some((t) => t.includes("你的账户余额（¥1007.20）")), true);
 }
 
 console.log("\n[9] 单会话超限确认框");
@@ -355,7 +363,7 @@ console.log("\n[9] 单会话超限确认框");
   const { exports: p } = loadPlugin(r);
   const list = texts(p.ConfirmDialog({ state: blockedState, onClose() {}, onOverride() {}, onRaise() {}, onSaved() {} }));
   check("标题", list.includes("本会话已达上限"), true);
-  check("提高上限", list.includes("提高上限"), true);
+  check("调高上限", list.includes("调高上限"), true);
   check("会话范围不给去充值", list.includes("去充值"), false);
   check("展示会话已用/上限", list.some((t) => t.includes("本会话已用 ¥52.40 / 上限 ¥50.00")), true);
   check("本会话放行仍在", list.includes("本会话放行"), true);

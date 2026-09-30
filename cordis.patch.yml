@@ -16,5 +16,6 @@
       name: 'yoka-dsh-billing'
       config:
         rate: 7.2
+        limit: 0      # 自设的全局计费上限（0 = 不设上限、不阻断）；超过账户余额会被夹到余额
         sessionLimit: 0
         guard: true

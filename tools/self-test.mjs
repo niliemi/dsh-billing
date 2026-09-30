@@ -217,46 +217,65 @@ try {
   check("历史按旧汇率折算过", before > 0, true);
   const usdAfterRules = state.usedUSD;
 
-  /* 6. 全局上限 = 账户余额（充值 + 赠金） ------------------------------- */
-  console.log("\n[6] 全局上限 = 充值 + 赠金");
+  /* 6. 全局上限由主人自设；留空 = 不设，超过余额夹到余额 ----------------- */
+  console.log("\n[6] 全局上限（自设 + 余额夹取）");
   state = await stateOf(ctx);
-  near("充值 1000 + 赠金 1 USD×7.2", state.ceiling, 1007.2);
-  check("上限来源是余额", state.ceilingSource, "balance");
-  check("上限可用", state.ceilingAvailable, true);
+  check("默认不设上限", [state.ceiling, state.ceilingSource, state.ceilingAvailable], [0, "unset", false]);
+  check("不设上限 → 不阻断", state.blocked, false);
+  near("余额仍可读（充值 1000 + 赠金 1 USD×7.2）", state.balance.cny, 1007.2);
   check("钱包两行（充值在前）", (state.balance.wallets ?? []).map((w) => w.bonus), [false, true]);
   near("赠金折算成 CNY", state.balance.bonusCNY, 7.2);
   check("已登录", state.balance.signedIn, true);
   check("充值入口存在", typeof state.balance.topUpUrl, "string");
-  near("占用百分比", state.percent, (state.usedCNY / 1007.2) * 100, 1e-6);
+
+  state = await post(ctx, "/plugin-billing/config", { limit: 500 });
+  near("自设 500 → 上限就是 500", state.ceiling, 500);
+  check("来源是自设（未夹取）", [state.ceilingSource, state.ceilingClamped], ["limit", false]);
+  near("余额只当边界", state.balanceCap, 1007.2);
+  near("占用百分比", state.percent, (state.usedCNY / 500) * 100, 1e-6);
+
+  state = await post(ctx, "/plugin-billing/config", { limit: 5000 });
+  near("自设 5000 → 夹到余额", state.ceiling, 1007.2);
+  check("来源是夹取", [state.ceilingSource, state.ceilingClamped], ["limit-clamped", true]);
+  check("夹取时响应带 limitClamped", state.limitClamped, true);
+  near("原值仍保留在账本里", state.limit, 5000);
+
+  state = await post(ctx, "/plugin-billing/config", { limit: 0 });
+  check("清零 → 回到不设上限", [state.ceiling, state.ceilingSource], [0, "unset"]);
 
   const emptyCtx = makeCtx(makeAccount({ value: [] }));
   apply(emptyCtx, { storeFile: join(dir, "empty.json") });
   const emptyState = await stateOf(emptyCtx);
-  check("余额为 0 → 不设上限", [emptyState.ceiling, emptyState.ceilingSource], [0, "balance-empty"]);
+  check("余额为 0 → 上限仍未设", [emptyState.ceiling, emptyState.ceilingSource], [0, "unset"]);
   check("余额为 0 → 不阻断", emptyState.blocked, false);
+  const emptySet = await post(emptyCtx, "/plugin-billing/config", { limit: 50 });
+  near("余额为 0 时不夹取：自设 50 生效", emptySet.ceiling, 50);
 
   const noAccountCtx = makeCtx(undefined);
   apply(noAccountCtx, { storeFile: join(dir, "noaccount.json") });
   const noAccount = await stateOf(noAccountCtx);
-  check("账户服务缺失 → 上限 0", [noAccount.ceiling, noAccount.ceilingSource], [0, "balance-unavailable"]);
+  check("账户服务缺失 → 上限未设", [noAccount.ceiling, noAccount.ceilingSource], [0, "unset"]);
   check("账户服务缺失 → 有可读错误", noAccount.balance.error.length > 0, true);
+  const noAccountSet = await post(noAccountCtx, "/plugin-billing/config", { limit: 7 });
+  check("账户服务缺失 → 自设上限照旧生效", [noAccountSet.ceiling, noAccountSet.ceilingSource], [7, "limit"]);
 
-  /* 7. 守卫：余额超限 → reject，放行语义 -------------------------------- */
+  /* 7. 守卫：超过自设上限 → reject，放行语义 ----------------------------- */
   console.log("\n[7] agent/pre-step 守卫（全局）");
   const ctx7 = makeCtx(makeAccount({ value: [cny(9.5)] }));
   apply(ctx7, { storeFile: join(dir, "guard.json") });
+  await post(ctx7, "/plugin-billing/config", { limit: 5 }); // 自设 5 < 用量 9.504
   const s7 = fakeSession("s7", []);
   emit(ctx7, s7);
   s7.events.push(header("deepseek", "deepseek-v4-pro"));
   s7.events.push(usage(1, 1, { inputTokens: 1000000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }));
-  emit(ctx7, s7); // 1.32 USD = 9.504 CNY ≥ 余额 9.5
+  emit(ctx7, s7); // 1.32 USD = 9.504 CNY ≥ 自设上限 5
   const hit7 = await stateOf(ctx7);
   near("用量 9.504", hit7.usedCNY, 9.504);
-  check("余额够不着 → blocked", [hit7.blocked, hit7.blockScope], [true, "global"]);
+  check("超过自设上限 → blocked", [hit7.blocked, hit7.blockScope], [true, "global"]);
   check("entry 决策被拒绝", (await preStep(ctx7, payloadOf("s7"))).kind, "reject");
   const blockedState = await stateOf(ctx7);
   check("阻断时间戳已记录", blockedState.lastBlockAt > 0, true);
-  check("阻断范围记的是余额", blockedState.lastBlock?.scope, "global");
+  check("阻断范围记的是全局", blockedState.lastBlock?.scope, "global");
   check("重复调用仍拒绝", (await preStep(ctx7, payloadOf("s7"))).kind, "reject");
 
   let st = await post(ctx7, "/plugin-billing/override", { mode: "once" });
@@ -265,7 +284,7 @@ try {
   check("第二次又拒绝", (await preStep(ctx7, payloadOf("s7"))).kind, "reject");
 
   st = await post(ctx7, "/plugin-billing/override", { mode: "session", sessionId: "s7" });
-  check("单会话放行不越过全局余额", (await preStep(ctx7, payloadOf("s7"))).kind, "reject");
+  check("单会话放行不越过全局上限", (await preStep(ctx7, payloadOf("s7"))).kind, "reject");
 
   st = await post(ctx7, "/plugin-billing/override", { mode: "session" });
   check("整会话放行（旧语义）", st.overrideSession, true);
@@ -441,7 +460,8 @@ try {
   near("旧账本用量保留", st16.usedUSD, 1.32 + 3.96);
   check("旧账本会话仍在", st16.session?.id, "s-legacy");
   check("旧账本用量按会话归属", st16.session?.ceilingSource, "none");
-  check("旧字段 topUp 保留但不再当上限", [st16.topUp, st16.limit, st16.ceilingSource], [500, 300, "balance"]);
+  check("旧字段 topUp 保留（废弃不再当上限），limit 当作自设全局上限", [st16.topUp, st16.limit, st16.ceilingSource, st16.ceiling], [500, 300, "limit", 300]);
+  check("旧账本的上限不高，未阻断", st16.blocked, false);
   const migrated = JSON.parse(readFileSync(legacyFile, "utf8"));
   check("落盘后升级为 version 2", migrated.version, 2);
   check("升级后旧字段仍在文件里", [migrated.topUp, migrated.limit], [500, 300]);
