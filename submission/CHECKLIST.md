@@ -4,6 +4,26 @@
 
 ---
 
+## ⚠️ 先决问题：查重结论需要你拍板
+
+投稿前查了精选列表目录（4392 条，`usage` 类目 **235 条**），发现核心能力已被更成熟的插件覆盖：
+
+| 既有条目 | 已覆盖什么 |
+|---|---|
+| [PerryLink/dsh-budget](https://github.com/PerryLink/dsh-budget) v0.4.12 | **四类 token 计量（uncached input / output / cache read / cache write）、内置美元单价表 + 用户覆盖、session/日/月预算、超限策略 alert / `block`（阻断新请求直到解除）/ degrade**，另有碳排与延迟、审计事件；界面是 Settings 预算页 + `/budget` 命令 |
+| [02Muller25/dsh-api-balance](https://github.com/02Muller25/dsh-api-balance) | composer 输入框下方的账户余额常驻显示 |
+| [songoao25/dsh-bottom-info-bar](https://github.com/songoao25/dsh-bottom-info-bar) | 底部信息条：provider/model、余额、峰谷价、**真实持久化的每会话花费** |
+
+也就是说：**「按 token 算钱 + 上限 + 硬阻断」这件事已经有人做完了，而且做得比本插件多。** 本插件剩下的真正差异只有三条：
+
+1. 常驻在 `conversation.composer.dock`（与官方上下文环同一行）的角标，格式 `<符号><已用> / <上限>`；
+2. 人民币 + 可改汇率，且上限定义为 `min(自设上限, 已充金额)`；
+3. 阻断前先弹确认框，可一次性 / 整会话放行。
+
+精选列表的查重规则原文是「是否与既有条目重复（谁更好谁留）」。所以**提之前需要你决定**：照提（接受可能被以重复为由关闭），还是保留自用不提。PR 正文里已经写明这三点差异与三条最接近的既有条目，不含任何夸大。
+
+---
+
 ## ✅ 已完成（本地）
 
 - [x] 19 个文件已纳入本地 git 仓库，分支 `main`

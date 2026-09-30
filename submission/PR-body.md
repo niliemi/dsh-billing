@@ -29,6 +29,18 @@ It reports and limits cost/consumption. It does not render conversation, choose 
 - `node tools/self-test-client.mjs` → 38 passed / 0 failed (module shell, slot registration, chip text, panel fields, confirm dialog buttons, effect cleanup).
 - Installed into a live DSH profile: `GET /plugin-billing/state` returns 200 with real usage, and the client slot tree shows the `billing` entry active in `conversation.composer.dock` next to the shipped meter.
 
+## Closest existing entries (checked before opening this)
+
+`usage` already lists 235 entries. Three overlap with parts of this one, so here is the honest delta rather than a claim of novelty:
+
+- **PerryLink/dsh-budget** — four-bucket token metering, USD pricing from a built-in table with overrides, session/daily/monthly caps, and over-limit policies including `block`. This is the mature implementation of the same core idea. Its own README lists its surfaces as the Settings budget tab plus the `/budget` command.
+- **02Muller25/dsh-api-balance** — account balance readout in the composer dock.
+- **songoao25/dsh-bottom-info-bar** — a bottom info line with provider/model, balance, peak pricing and per-session spend.
+
+What this submission actually adds: a resident chip inside `conversation.composer.dock` — the row that already carries the shipped context meter — rendering `<symbol><spent> / <ceiling>` (e.g. `¥12.36 / ¥50.00`), with the ceiling defined as `min(your ceiling, your top-up)`, an editable CNY rate, and a confirmation dialog before the block (one-off or session-wide override). It is deliberately **not** a budget engine: no daily/monthly windows, no carbon or latency accounting, no audit events, no per-plugin budgets.
+
+If the maintainer judges this a duplicate of `dsh-budget`, I would rather be told than have the list carry the same thing twice — closing or narrowing the entry is fine.
+
 ## Notes
 
 - The amount is an equivalent-value estimate from published list prices; it is not a subscription bill.
