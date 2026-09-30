@@ -99,6 +99,20 @@ m00862 的原句「弹出界面不需要设置已充金额，因为上限就是�
 
 自测：宿主 `self-test.mjs` **151 通过 / 0 失败**（`[17]` 改成独立语义：单会话重置不动全局本次、全局上限因此仍会阻断；全局重置不碰各会话自己的周期——这条就是本次 bug 的回归测试；新增 `[16b]` 用 0.2.4 形状的账本验证迁移与「恢复被误伤的会话」），浏览器 `self-test-client.mjs` **107 通过 / 0 失败**（角标与面板措辞改成「只动本会话 / 只动全局、不碰各会话」后同步断言；新增 5 条：会话行上排本次费用/本次 token、下排累计费用/累计 token、以及段首「上排 = 本次 / 下排 = 累计」说明）。
 
+## 2h. DSH STORE 的 Catalog blocked 反馈（0.2.7）
+
+> 主人的原话（m03536）：Catalog blocked「费用与账单（Yoka DSH Billing）0.2.6」——`DSH compatibility is not explicitly declared; Node.js compatibility is not explicitly declared; runtime source contains the files permission signal; runtime source contains the network permission signal; runtime source contains the commands permission signal; runtime source contains the credentials permission signal`；建议「在 manifest 中明确声明 Node.js 与 DSH 兼容范围，并补充一次性 Profile 的安装、启动与卸载证据」，推送到默认分支后每 8 小时自动复检。
+
+判定规则是读商城源码（`AI-Scarlett/DSH-Store`）确认的，不是猜的：自动批准要求 `manifest.files` 非空、`engines.node` 与 `dsh.compatibility.dsh` 都存在，且**运行源码里六类权限信号全为 false**；任何一条不满足就是 `status:"blocked"` + `statusReason: "Automatic policy blocked installation: …"`。信号用正则从源码里扫（`readFile|writeFile|…`、`fetch(`、`exec|spawn(`、`process.env`…），扫的是仓库里所有「像运行时源码」的文件，**测试目录被排除**。另外即使批准了，若 `dshReleases` 里没有「官方最新三个 DSH 版本」（当前 = 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2）中任何一个的**逐版本 compatible** 记录，条目也会被 `DSH_LATEST_THREE_COMPATIBILITY_HOLD` 下架。
+
+0.2.7 只动声明层，不动计费逻辑：
+
+- `package.json` 补 `engines.node = ">=20"`、`os = [darwin, linux, win32]`，以及 `dsh.compatibility = { dsh: ">=0.2.0-rc.1", profiles: ["web"], dshReleases: { "0.2.0-rc.2": "compatible" } }`——`dsh` / `node` / `dshReleases` / `profiles` / `systems` 正是商城 `inferredCompatibility()` 读的那几个字段，用商城自己的提取函数核对过输出；`0.2.0-rc.2` 那条 compatible 有实测依据：本插件就长期跑在 DSH Desktop 0.2.0-rc.2（Electron 44 / Node 24.14.0）上。
+- README 新增「权限、依赖与失败边界」：逐条写清 files / network / commands / credentials 用在哪、边界在哪，外部服务只有可选的 `deepseekAccount`，以及账本损坏 / 写盘失败 / 余额不可用 / 未知模型 / 路由拒绝各自的退化行为。
+- 顺手修掉版本漂移：`lib/index.js` 的 `VERSION` 原先是硬编码 `"0.2.5"`（随账户请求上报），现在改成读自己的 `package.json`，版本只维护一处。
+- **没能消除的两条信号**（`lib/index.js` 的 files、`lib/client.js` 的 network）是这类插件的本性：宿主半边得把账本写进 JSON 文件，浏览器半边得调自己的宿主路由——实测 profile 里 7 个第三方 `client.js` **全都**用 `fetch(`（命中 2～51 处），手写客户端没有不引入构建步骤的等价 Remote 通道。dev 脚本（`tools/` 下自测 / 探针 / 发布）签名最多（files+network+commands+credentials），而按商城自己的规则「测试文件不是运行能力证据」；是否把 `tools/` 改名为 `tests/`（签名 4 → 2）待主人拍板。
+- 自测不变：宿主 **151 通过 / 0 失败**、浏览器 **107 通过 / 0 失败**。
+
 ## 3. 实现
 
 ### 形态
@@ -111,7 +125,7 @@ m00862 的原句「弹出界面不需要设置已充金额，因为上限就是�
 | 浏览器 | `lib/client.js` | Web GUI 页面 | `exports["./client"]` + `dsh.client.platform: "web"` |
 | 装载 | `cordis.patch.yml` | — | `dsh.bundle.patch` |
 
-浏览器半边是手写的 `window.__ModuleLoader__.load({...})` 工厂，**只 require `react` 与 `react-dom`**，不需要构建步骤；宿主半边**只用 node 内置模块**（`node:fs` / `node:os` / `node:path` / `node:url`），没有任何 `@deepseek-ai/*` 运行时依赖——因此也不存在 peer 版本范围把预发布宿主挡在外面的经典坑。唯一的外部宿主服务是**可选**依赖 `ctx.get("deepseekAccount")`（余额），拿不到就退化为「无全局上限」。
+浏览器半边是手写的 `window.__ModuleLoader__.load({...})` 工厂，**只 require `react` 与 `react-dom`**，不需要构建步骤；宿主半边**只用 node 内置模块**（`node:fs` / `node:os` / `node:path` / `node:url`），没有任何 `@deepseek-ai/*` 运行时依赖——因此也不存在 peer 版本范围把预发布宿主挡在外面的经典坑。唯一的外部宿主服务是**可选**依赖 `ctx.get("deepseekAccount")`（余额）；拿不到就只影响余额显示与「上限被余额夹取」这一层，计费与自设上限照旧。
 
 ### 计费
 

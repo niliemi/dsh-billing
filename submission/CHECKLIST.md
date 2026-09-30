@@ -39,6 +39,8 @@
 - [x] `LICENSE`（MIT，署名 niliemi）、`.gitignore`、`.gitattributes`（`* text=auto eol=lf`）
 - [x] 自测：`node tools/self-test.mjs` → **151/0**，`node tools/self-test-client.mjs` → **107/0**
 - [x] `npm pack --dry-run` → 7 个文件 / 26 KB，内容完整
+- [x] **DSH STORE 声明（0.2.7）**：`package.json` 补 `engines.node = ">=20"`、`os`（三个桌面系统）、`dsh.compatibility = { dsh, profiles: ["web"], dshReleases: { "0.2.0-rc.2": "compatible" } }`；README 新增「权限、依赖与失败边界」（files / network / commands / credentials 各自的用途与边界、唯一外部服务 `deepseekAccount`、五条失败边界）；已用商城自己的 `inferredCompatibility()` 核对声明输出，并确认兼容保持（最新三个版本里至少一个 compatible）能过。
+- [ ] DSH STORE 仍会扫到两条**本性**权限信号（`lib/index.js` 的 files、`lib/client.js` 的 network，生态里 Web 插件客户端全都用 `fetch(`）；`tools/` 下 dev 脚本的 files/network/commands/credentials 四条可按商城规则（测试文件不算运行能力证据）通过改名为 `tests/` 消掉——**是否改结构待主人拍板**。
 
 ## ⓪ 自动路径（推荐）：只放一个 token 文件，其余交给脚本
 

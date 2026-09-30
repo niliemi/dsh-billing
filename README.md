@@ -67,6 +67,22 @@
 
 守卫：仅接受同源 / 带 `dsh-auth-` cookie / 回环地址的请求，响应 `cache-control: no-store`。
 
+## 权限、依赖与失败边界
+
+面向 DSH STORE 自动审查的声明（`package.json` 里的 `engines` 与 `dsh.compatibility` 是机器可读的那一份，这里是同一件事的说明）：
+
+| 能力 | 用在哪 | 边界 |
+| --- | --- | --- |
+| 文件系统（files） | 宿主半边读写**插件自己的账本** `~/.dsh/billing/ledger.json`（config `storeFile` 可指到别处） | 不读工作区、不读其它插件的数据；写盘是「临时文件 + 改名」的原子替换 |
+| 网络（network） | 浏览器半边用**同源** `fetch` 调本插件自己的宿主路由 `/plugin-billing/…` | 宿主半边不发起任何网络请求；不访问任何第三方域 |
+| 子进程（commands） | **运行时零子进程**；只有 `tools/` 下的开发脚本（自测、HMR/HTTP 探针、发布）会用到 shell 与 git | 这些脚本不在 `files` 里，不随包发布 |
+| 凭据（credentials） | **运行时零凭据**；余额走宿主 `deepseekAccount` 服务，插件从不接触账号 token | `tools/submit-remote.mjs` 读本机 `~/.dsh/github-token.txt`，仅供作者发布用 |
+| 原生模块 / 生命周期脚本 / 运行时依赖 | 都没有：纯 ESM，`peerDependencies` 只有 `react`（宿主已提供） | 装包不执行任何 install / build 脚本 |
+
+- **外部服务**：唯一可选的对外依赖是宿主服务 `deepseekAccount`（读账号余额）。其余全部本地：计费靠内置价目表 `lib/pricing.json` 与账本里的 token 记录。
+- **兼容性**：Node `>=20`（实测 Node 24.14.0 —— DSH Desktop 0.2.0-rc.2 自带的 Electron 44 运行时，也是两份自测所用的 Node）；DSH `>=0.2.0-rc.1`；逐版本记录里 `0.2.0-rc.2` = **compatible**，依据是本插件在该版本上长期实跑（宿主路由、双角标、余额、重置都在用）；浏览器半边声明 `platform: web`，profile `web`。**一次性 profile 的安装 / 启动 / 卸载尚未自动化验证**，因此不声明 `dshOperations`（保持 unknown）。
+- **失败边界**（都不影响会话本身）：账本读不到或 JSON 损坏 → 从空账本开始，不抛错；写盘失败 → 记一条 `billing: 账本写入失败` warn，进程内继续算；余额服务不可用（未登录 / 接口失败 / 服务缺失）→ 余额显示 `—` 且**不夹取**上限，计费与阻断照旧；价目表缺失或模型未知 → 用保守估算价 `[1, 4, 0.1, 0]`；路由对非本机 / 非同源请求返回拒绝，只影响该请求。
+
 ## 安装
 
 宿主半边跑在 DSH 进程里；浏览器半边是手写的 `window.__ModuleLoader__` 包装（`lib/client.js`，**无需构建**），由 `dsh-client-modules` 以 combo URL 提供——**注意不是** `/plugins/yoka-dsh-billing/client.js`（该形状返回 404），真实 URL 形如 `/plugins/??yoka-dsh-billing/client.js&rev=<rev>`，由启动图注入，页面上会自行加载。
