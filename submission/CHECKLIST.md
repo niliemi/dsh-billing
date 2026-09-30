@@ -35,6 +35,28 @@
 - [x] 自测：`node tools/self-test.mjs` → **55/0**，`node tools/self-test-client.mjs` → **38/0**
 - [x] `npm pack --dry-run` → 7 个文件 / 26 KB，内容完整
 
+## ⓪ 自动路径（推荐）：只放一个 token 文件，其余交给脚本
+
+侧边栏里的 GitHub 登录**对命令行不可见**（凭据管理器无 GitHub 条目、`gh` 未安装、环境无 token），所以脚本需要一份 GitHub token。做法：
+
+1. 打开 https://github.com/settings/tokens → **Tokens (classic)** → Generate new token (classic)，只勾 **`repo`**，有效期随意。
+2. 把 token 存成纯文本文件（**只放 token 一行，别放进聊天窗口**）：
+
+   ```powershell
+   notepad "C:\Users\walex lin\.dsh\github-token.txt"
+   ```
+
+3. 之后所有步骤一条命令：
+
+   ```powershell
+   cd "C:\Users\walex lin\Desktop\dsh workflow\插件\dsh-billing"
+   node tools/submit-remote.mjs check    # 只体检：身份、仓库是否存在、够不够 1 天
+   node tools/submit-remote.mjs all      # 建仓库 + 打 topic + 推送（满 1 天则连 PR 一起提）
+   node tools/submit-remote.mjs pr       # 24 小时后再跑这条来提 PR
+   ```
+
+脚本不会打印 token；推送用 `git -c http.extraheader` 传 Basic，token 不写进 remote URL。用完可以直接 Revoke 那个 token。下面的手写步骤是同等效力的人工备份路径。
+
 ## ① 建 GitHub 公开仓库并推送（**只有你能做**）
 
 1. GitHub 网页端新建**公开**仓库 `dsh-billing`——**不要**勾选自动生成 README / .gitignore / License（会和本地冲突）。

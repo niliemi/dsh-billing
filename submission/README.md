@@ -13,6 +13,12 @@ DeepSeek **没有**自营插件商店；桌面端内置的「插件市场」(`ds
 | `CHECKLIST.md` | **剩下要做的步骤**，标了哪几步只能由你的账号完成 |
 | `README.md` | 本文件 |
 
+## 自动路径
+
+`tools/submit-remote.mjs` 能一条命令包办「建仓库 → 打 topic → 推送 → fork → 加条目 → 开 PR」。
+它只缺一份 GitHub token（侧边栏的浏览器登录对 git 不可见）：把 token 存成 `C:\Users\walex lin\.dsh\github-token.txt`，
+然后 `node tools/submit-remote.mjs check` 体检、`all` 执行。细节见 `CHECKLIST.md` 的 ⓪ 段。
+
 ## 一个容易看混的点
 
 仓库名是 `dsh-billing`，**包名 / 插件 id 仍是 `yoka-dsh-billing`**（已装进你本机 profile 的就是这个 id，改名会把它从已装状态里踢掉）。
