@@ -32,6 +32,15 @@ It reports and limits cost/consumption. It does not render conversation, choose 
 - `node tests/self-test-client.mjs` → 107 passed / 0 failed (module shell, slot registrations, both chips each with a dot and an ↺ reset control, chip titles carrying the lifetime figure, the session ↺ tooltip saying it moves that session only, the global ↺ tooltip saying it moves the global figure only and touches no session, unset-ceiling wording, sidebar balance with a this-period/lifetime tooltip, panel fields including the editable global ceiling and neither "top-up amount" nor "per-session default ceiling", a standalone per-session ceiling section with its own column headers and a "current" marker, two sessions rendering one independent ceiling input each, every session row showing this period on its first line and the lifetime on its second, this-period plus lifetime on both the overview and the per-model rows, reset-baseline / clear-history actions in the panel, both confirm dialogs with their own reset action, overlay toggling, effect cleanup).
 - Installed into a live DSH profile: `GET /plugin-billing/state` returns 200 with real usage, the client slot tree shows the `billing` entry active in `conversation.composer.dock` next to the shipped meter, and the `billing-balance` entry active in `sidebar.footer.action`.
 
+## Screenshots (this build, live in DSH Desktop)
+
+- [Composer chips — this session and global, each with its own ↺](https://raw.githubusercontent.com/niliemi/dsh-billing/main/docs/screenshots/01-composer-chips.png)
+- [Sidebar balance next to both chips](https://raw.githubusercontent.com/niliemi/dsh-billing/main/docs/screenshots/02-chips-and-sidebar-balance.png)
+- [Panel — this period / lifetime, account balance, global ceiling](https://raw.githubusercontent.com/niliemi/dsh-billing/main/docs/screenshots/03-panel-ceiling-and-balance.png)
+- [Panel — independent per-session ceilings and per-model pricing](https://raw.githubusercontent.com/niliemi/dsh-billing/main/docs/screenshots/04-panel-per-session-and-pricing.png)
+
+They are embedded in the plugin README as well: https://github.com/niliemi/dsh-billing#界面
+
 ## Closest existing entries (checked before opening this)
 
 `usage` already lists 235 entries. Three overlap with parts of this one, so here is the honest delta rather than a claim of novelty:

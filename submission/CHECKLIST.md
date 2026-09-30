@@ -38,7 +38,8 @@
 - [x] `dsh.bundle` + `dsh.client` 均已声明；**零 `@deepseek-ai/*` 运行时依赖**
 - [x] `LICENSE`（MIT，署名 niliemi）、`.gitignore`、`.gitattributes`（`* text=auto eol=lf`）
 - [x] 自测：`node tests/self-test.mjs` → **153/0**，`node tests/self-test-client.mjs` → **107/0**
-- [x] `npm pack --dry-run` → 7 个文件 / 26 KB，内容完整
+- [x] `npm pack --dry-run` → 7 个文件 / 43.1 KB，内容完整（`tests/` 与 `docs/` 不随包发布）
+- [x] 截图 4 张已进仓库 `docs/screenshots/`（双角标、侧栏余额、面板上半、面板下半），README 新增「## 界面」内嵌，PR 正文用 absolute raw URL 引用。
 - [x] **DSH STORE 声明（0.2.7）**：`package.json` 补 `engines.node = ">=20"`、`os`（三个桌面系统）、`dsh.compatibility = { dsh, profiles: ["web"], dshReleases: { "0.2.0-rc.2": "compatible" } }`；README 新增「权限、依赖与失败边界」（files / network / commands / credentials 各自的用途与边界、唯一外部服务 `deepseekAccount`、五条失败边界）；已用商城自己的 `inferredCompatibility()` 核对声明输出，并确认兼容保持（最新三个版本里至少一个 compatible）能过。
 - [x] **DSH STORE 结构层（0.2.8）**：dev 脚本 `tools/` → `tests/`（商城规则里「测试文件不是运行能力证据」，`tests/` 被它的扫描排除），用商城自己的 `permissionSignals()` 复扫：权限签名 **4 条 → 2 条**，运行文件 12 个 / 208239 B → 6 个 / 139226 B。
 - [ ] DSH STORE 仍会扫到两条**本性**权限信号：`lib/index.js` 的 files（账本要写 JSON）、`lib/client.js` 的 network（浏览器半边要调自己的宿主路由）——实测 profile 里 7 个第三方 `client.js` **全都**用 `fetch(`，手写客户端没有不引入构建步骤的等价 Remote 通道，所以这两条按预期保留。

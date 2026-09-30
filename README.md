@@ -11,6 +11,20 @@
 - 点角标打开面板；点 ↺ 重置计费起点；超额时弹确认框。
 - 圆点分三档：**绿 <60% / 橙 60–90% / 红 ≥90%**；全局上限未设时用灰点（不阻断）。
 
+## 界面
+
+聊天输入框下方常驻两条角标——左边本会话、右边全局，各自右边带一个 ↺；左侧边栏底部（设置按钮旁）是账号余额：
+
+![输入框下的双角标](docs/screenshots/01-composer-chips.png)
+
+![侧栏余额与双角标](docs/screenshots/02-chips-and-sidebar-balance.png)
+
+点角标打开面板。上半是「本次 / 累计」、账户余额与**全局计费上限**（留空 = 不设上限）；下半是独立的**单会话上限**段（每个会话一行，上排本次、下排累计）与模型单价：
+
+![面板：全局计费上限与账户余额](docs/screenshots/03-panel-ceiling-and-balance.png)
+
+![面板：单会话上限与模型单价](docs/screenshots/04-panel-per-session-and-pricing.png)
+
 ## 计费口径
 
 | 项目 | 取值 |
