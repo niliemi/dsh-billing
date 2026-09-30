@@ -1,0 +1,19 @@
+# yoka-dsh-billing —— 把插件挂进一个 DSH profile。
+#
+# node half（package.json 的 exports "."）在宿主进程里跑：折叠会话用量、持久化账本、
+# 提供 /plugin-billing/* 本地 HTTP 路由，并在 agent/pre-step 上做超额拦截。
+# package.json 里的 dsh.client 声明让浏览器半边（exports "./client"，
+# 由宿主 /plugins 的组合路由 /plugins/??yoka-dsh-billing/client.js&rev=<rev> 提供）
+# 在 Web GUI 里加载：
+# 它在 conversation.composer.dock 槽位注册费用角标（就落在 token 环左侧）。
+#
+# 安装：把本包放进 profile 的 node_modules（link: 或拷贝），再把下面的 id 加进
+# profile package.json 的 dsh.profile.bundles。
+- insert:
+    - id: yoka-dsh-billing
+      name: 'yoka-dsh-billing'
+      config:
+        rate: 7.2
+        topUp: 0
+        limit: 0
+        guard: true

@@ -1,0 +1,56 @@
+{
+  "name": "yoka-dsh-billing",
+  "version": "0.1.0",
+  "description": "DSH plugin: prices tokens from the official model price table, shows the running cost beside the composer's context meter, and blocks a turn past the ceiling you set.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/pricing.json",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.0-rc.1"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "billing",
+    "usage",
+    "cost",
+    "tokens"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niliemi/dsh-billing.git"
+  },
+  "bugs": {
+    "url": "https://github.com/niliemi/dsh-billing/issues"
+  },
+  "homepage": "https://github.com/niliemi/dsh-billing#readme",
+  "author": "niliemi",
+  "license": "MIT"
+}

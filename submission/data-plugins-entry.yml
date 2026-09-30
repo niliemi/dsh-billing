@@ -1,0 +1,6 @@
+url: https://github.com/niliemi/dsh-billing
+name: niliemi/dsh-billing
+category: usage
+description:
+  en: Prices tokens with the official model price table, keeps the running cost beside the composer context meter, and blocks a turn once spend passes the ceiling you set.
+  zh: 按官方模型价目表把 token 折算成费用，在聊天框底部的上下文环旁常驻显示已用金额，并在费用超过自设上限时阻断该轮（可一次性放行）。
