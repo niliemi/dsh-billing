@@ -59,7 +59,7 @@
    node tools/submit-remote.mjs pr       # 24 小时后再跑这条来提 PR
    ```
 
-脚本不会打印 token；推送用 `git -c http.extraheader` 传 Basic，token 不写进 remote URL。用完可以直接 Revoke 那个 token。下面的手写步骤是同等效力的人工备份路径。
+脚本不会打印 token；推送用 `git -c http.extraheader` 传 Basic，token 不写进 remote URL。**走网的 git 步骤是「直连优先 × 3 次，失败再看本地代理端口开不开」**（本机 github.com:443 时通时不通；次数用 `GIT_NET_RETRIES` 改，`api.github.com` 不受影响）。用完可以直接 Revoke 那个 token。下面的手写步骤是同等效力的人工备份路径。
 
 ## ① 建 GitHub 公开仓库并推送（**只有你能做**）
 
