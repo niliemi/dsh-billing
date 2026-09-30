@@ -1,6 +1,6 @@
 /**
  * 宿主半边自测：折叠 / 计价 / 全局上限=余额 / 单会话上限 / 守卫 / 路由 / 持久化。
- * 用法：node tools/self-test.mjs
+ * 用法：node tests/self-test.mjs
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -567,11 +567,13 @@ try {
   check("单会话重置不让全局上限放行", [afterA.blocked, afterA.blockScope], [true, "global"]);
   check("全局仍越线 → 仍拒绝", (await preStep(ctx17, payloadOf("sA"))).kind, "reject");
   near("另一个会话没被牵连", (await stateOf(ctx17, "sB")).session.usedCNY, 4.752);
+  check("单会话重置不刷新全局周期起点", afterA.resetAt, 0);
 
   const afterAll = await post(ctx17, "/plugin-billing/reset", {});
   near("全局重置后本次 = 0", afterAll.usedCNY, 0);
   near("全局重置后累计不变", afterAll.totalCNY, 14.256);
   check("全局重置后不再阻断（不必调高上限）", afterAll.blocked, false);
+  check("全局重置才刷新全局周期起点", afterAll.resetAt > 0, true);
   check("全局重置后守卫放行", (await preStep(ctx17, payloadOf("sA"))).kind, "enter");
   const rows17 = Object.fromEntries(afterAll.sessions.map((row) => [row.id, row]));
   near("全局重置不碰会话 sB 的本次（独立）", rows17.sB.cny, 4.752);

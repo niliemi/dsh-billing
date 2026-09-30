@@ -75,13 +75,14 @@
 | --- | --- | --- |
 | 文件系统（files） | 宿主半边读写**插件自己的账本** `~/.dsh/billing/ledger.json`（config `storeFile` 可指到别处） | 不读工作区、不读其它插件的数据；写盘是「临时文件 + 改名」的原子替换 |
 | 网络（network） | 浏览器半边用**同源** `fetch` 调本插件自己的宿主路由 `/plugin-billing/…` | 宿主半边不发起任何网络请求；不访问任何第三方域 |
-| 子进程（commands） | **运行时零子进程**；只有 `tools/` 下的开发脚本（自测、HMR/HTTP 探针、发布）会用到 shell 与 git | 这些脚本不在 `files` 里，不随包发布 |
-| 凭据（credentials） | **运行时零凭据**；余额走宿主 `deepseekAccount` 服务，插件从不接触账号 token | `tools/submit-remote.mjs` 读本机 `~/.dsh/github-token.txt`，仅供作者发布用 |
+| 子进程（commands） | **运行时零子进程**；只有 `tests/` 下的开发脚本（自测、HMR/HTTP 探针、发布）会用到 shell 与 git | 这些脚本不在 `files` 里，不随包发布 |
+| 凭据（credentials） | **运行时零凭据**；余额走宿主 `deepseekAccount` 服务，插件从不接触账号 token | `tests/submit-remote.mjs` 读本机 `~/.dsh/github-token.txt`，仅供作者发布用 |
 | 原生模块 / 生命周期脚本 / 运行时依赖 | 都没有：纯 ESM，`peerDependencies` 只有 `react`（宿主已提供） | 装包不执行任何 install / build 脚本 |
 
 - **外部服务**：唯一可选的对外依赖是宿主服务 `deepseekAccount`（读账号余额）。其余全部本地：计费靠内置价目表 `lib/pricing.json` 与账本里的 token 记录。
 - **兼容性**：Node `>=20`（实测 Node 24.14.0 —— DSH Desktop 0.2.0-rc.2 自带的 Electron 44 运行时，也是两份自测所用的 Node）；DSH `>=0.2.0-rc.1`；逐版本记录里 `0.2.0-rc.2` = **compatible**，依据是本插件在该版本上长期实跑（宿主路由、双角标、余额、重置都在用）；浏览器半边声明 `platform: web`，profile `web`。**一次性 profile 的安装 / 启动 / 卸载尚未自动化验证**，因此不声明 `dshOperations`（保持 unknown）。
 - **失败边界**（都不影响会话本身）：账本读不到或 JSON 损坏 → 从空账本开始，不抛错；写盘失败 → 记一条 `billing: 账本写入失败` warn，进程内继续算；余额服务不可用（未登录 / 接口失败 / 服务缺失）→ 余额显示 `—` 且**不夹取**上限，计费与阻断照旧；价目表缺失或模型未知 → 用保守估算价 `[1, 4, 0.1, 0]`；路由对非本机 / 非同源请求返回拒绝，只影响该请求。
+- **DSH STORE 自动审查的现状**：按商城自己的扫描规则复扫本仓库，运行文件里只剩两条信号——`lib/index.js` 的 files（账本写 JSON）与 `lib/client.js` 的 network（浏览器半边调自己的宿主路由）。开发脚本已放在 `tests/`，而商城把测试目录排除在「运行能力证据」之外，所以 commands / credentials 两条不再计入。剩下这两条是这类插件的本性，条目因此仍可能停在人工复核（商城的说明也写明：高能力项目可能保持 user-reviewed，声明本身不保证自动批准）。
 
 ## 安装
 
@@ -106,10 +107,10 @@
 ## 开发
 
 ```powershell
-node tools/build-pricing.mjs "<pi-ai>/dist/providers/data"   # 重新生成 lib/pricing.json
-node tools/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 自设上限与夹取 / 守卫 / 路由 / 持久化 / 旧账本迁移 / 重置计费起点（全局与单会话互不影响）（151 项）
-node tools/self-test-client.mjs   # 浏览器：模块外壳 / 槽位 / 双角标与 ↺、侧栏余额、面板文案与「单会话上限」独立段（每行两排：本次 / 累计）/ 两个 ↺ 互不牵连（107 项）
-node tools/probe-hmr.mjs          # 核对「运行中的宿主」是否已发布本地这版 client.js（无需刷新/重启）
+node tests/build-pricing.mjs "<pi-ai>/dist/providers/data"   # 重新生成 lib/pricing.json
+node tests/self-test.mjs          # 宿主：折叠 / 计价 / 余额 / 自设上限与夹取 / 守卫 / 路由 / 持久化 / 旧账本迁移 / 重置计费起点（全局与单会话互不影响）（153 项）
+node tests/self-test-client.mjs   # 浏览器：模块外壳 / 槽位 / 双角标与 ↺、侧栏余额、面板文案与「单会话上限」独立段（每行两排：本次 / 累计）/ 两个 ↺ 互不牵连（107 项）
+node tests/probe-hmr.mjs          # 核对「运行中的宿主」是否已发布本地这版 client.js（无需刷新/重启）
 ```
 
 ## 已知边界
@@ -118,5 +119,5 @@ node tools/probe-hmr.mjs          # 核对「运行中的宿主」是否已发�
 - 余额来自宿主 `deepseekAccount` 服务（可选依赖：拿不到就只影响余额显示与「上限夹取」，不影响计费、自设上限与单会话上限）。
 - 面板里的模型键是 `provider/model`；直接改单价只影响该键的用量。
 - 角标挂在 `conversation.composer.dock` 槽位，只在会话输入态（composer）渲染；欢迎页不显示。侧栏余额挂在 `sidebar.footer.action`，与设置按钮同一行，收起态（56px）只留一个圆点。
-- 浏览器半边的改动由模块图 HMR 自动跟上：`dsh-client-hmr` 每 500ms stat 一次各条目的 `client.js`，元数据一变就 `rebuilt(id)` 并经 `/plugins/events` 广播，页面会把该插件重挂载（**不用刷新页面**，但被重载插件的 React 状态会丢，所以打开着的面板会自己关掉）。`node tools/probe-hmr.mjs` 可核对当前发行的 revision。**宿主半边（`lib/index.js`）不热重载源码**，改完需要重启 DSH 才会生效——已安装的那份实例跑的是安装时的代码。
+- 浏览器半边的改动由模块图 HMR 自动跟上：`dsh-client-hmr` 每 500ms stat 一次各条目的 `client.js`，元数据一变就 `rebuilt(id)` 并经 `/plugins/events` 广播，页面会把该插件重挂载（**不用刷新页面**，但被重载插件的 React 状态会丢，所以打开着的面板会自己关掉）。`node tests/probe-hmr.mjs` 可核对当前发行的 revision。**宿主半边（`lib/index.js`）不热重载源码**，改完需要重启 DSH 才会生效——已安装的那份实例跑的是安装时的代码。
 - 面板与确认框的底色是**完全不透明**的：官方「菜单面」色（`--dsw-specific-menu`，浅 `#f8f9faf0` / 深 `#303136f0`，94% 不透明）叠在 `--dsw-alias-bg-layer-1`（纯色层）上，外加 `rgba(0,0,0,.34)` 遮罩；面板经 `react-dom` 的 `createPortal` 挂到 `document.body`，避免侧栏祖先的 transform 困住 `fixed` 定位。

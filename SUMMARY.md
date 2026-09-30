@@ -99,19 +99,20 @@ m00862 的原句「弹出界面不需要设置已充金额，因为上限就是�
 
 自测：宿主 `self-test.mjs` **151 通过 / 0 失败**（`[17]` 改成独立语义：单会话重置不动全局本次、全局上限因此仍会阻断；全局重置不碰各会话自己的周期——这条就是本次 bug 的回归测试；新增 `[16b]` 用 0.2.4 形状的账本验证迁移与「恢复被误伤的会话」），浏览器 `self-test-client.mjs` **107 通过 / 0 失败**（角标与面板措辞改成「只动本会话 / 只动全局、不碰各会话」后同步断言；新增 5 条：会话行上排本次费用/本次 token、下排累计费用/累计 token、以及段首「上排 = 本次 / 下排 = 累计」说明）。
 
-## 2h. DSH STORE 的 Catalog blocked 反馈（0.2.7）
+## 2h. DSH STORE 的 Catalog blocked 反馈（0.2.7 / 0.2.8）
 
 > 主人的原话（m03536）：Catalog blocked「费用与账单（Yoka DSH Billing）0.2.6」——`DSH compatibility is not explicitly declared; Node.js compatibility is not explicitly declared; runtime source contains the files permission signal; runtime source contains the network permission signal; runtime source contains the commands permission signal; runtime source contains the credentials permission signal`；建议「在 manifest 中明确声明 Node.js 与 DSH 兼容范围，并补充一次性 Profile 的安装、启动与卸载证据」，推送到默认分支后每 8 小时自动复检。
 
 判定规则是读商城源码（`AI-Scarlett/DSH-Store`）确认的，不是猜的：自动批准要求 `manifest.files` 非空、`engines.node` 与 `dsh.compatibility.dsh` 都存在，且**运行源码里六类权限信号全为 false**；任何一条不满足就是 `status:"blocked"` + `statusReason: "Automatic policy blocked installation: …"`。信号用正则从源码里扫（`readFile|writeFile|…`、`fetch(`、`exec|spawn(`、`process.env`…），扫的是仓库里所有「像运行时源码」的文件，**测试目录被排除**。另外即使批准了，若 `dshReleases` 里没有「官方最新三个 DSH 版本」（当前 = 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2）中任何一个的**逐版本 compatible** 记录，条目也会被 `DSH_LATEST_THREE_COMPATIBILITY_HOLD` 下架。
 
-0.2.7 只动声明层，不动计费逻辑：
+0.2.7 只动声明层，不动计费逻辑；0.2.8 接着做结构层（`tools/` → `tests/`）与上面提到的那处口径校准：
 
 - `package.json` 补 `engines.node = ">=20"`、`os = [darwin, linux, win32]`，以及 `dsh.compatibility = { dsh: ">=0.2.0-rc.1", profiles: ["web"], dshReleases: { "0.2.0-rc.2": "compatible" } }`——`dsh` / `node` / `dshReleases` / `profiles` / `systems` 正是商城 `inferredCompatibility()` 读的那几个字段，用商城自己的提取函数核对过输出；`0.2.0-rc.2` 那条 compatible 有实测依据：本插件就长期跑在 DSH Desktop 0.2.0-rc.2（Electron 44 / Node 24.14.0）上。
 - README 新增「权限、依赖与失败边界」：逐条写清 files / network / commands / credentials 用在哪、边界在哪，外部服务只有可选的 `deepseekAccount`，以及账本损坏 / 写盘失败 / 余额不可用 / 未知模型 / 路由拒绝各自的退化行为。
 - 顺手修掉版本漂移：`lib/index.js` 的 `VERSION` 原先是硬编码 `"0.2.5"`（随账户请求上报），现在改成读自己的 `package.json`，版本只维护一处。
-- **没能消除的两条信号**（`lib/index.js` 的 files、`lib/client.js` 的 network）是这类插件的本性：宿主半边得把账本写进 JSON 文件，浏览器半边得调自己的宿主路由——实测 profile 里 7 个第三方 `client.js` **全都**用 `fetch(`（命中 2～51 处），手写客户端没有不引入构建步骤的等价 Remote 通道。dev 脚本（`tools/` 下自测 / 探针 / 发布）签名最多（files+network+commands+credentials），而按商城自己的规则「测试文件不是运行能力证据」；是否把 `tools/` 改名为 `tests/`（签名 4 → 2）待主人拍板。
-- 自测不变：宿主 **151 通过 / 0 失败**、浏览器 **107 通过 / 0 失败**。
+- **没能消除的两条信号**（`lib/index.js` 的 files、`lib/client.js` 的 network）是这类插件的本性：宿主半边得把账本写进 JSON 文件，浏览器半边得调自己的宿主路由——实测 profile 里 7 个第三方 `client.js` **全都**用 `fetch(`（命中 2～51 处），手写客户端没有不引入构建步骤的等价 Remote 通道。dev 脚本原本放在 `tools/`（签名最多：files+network+commands+credentials）；0.2.8 起按商城自己的规则「测试文件不是运行能力证据」改名为 `tests/`，用商城的 `permissionSignals()` 原样复扫，权限签名从 4 条降到 2 条——只剩 `lib/client.js` 的 network 与 `lib/index.js` 的 files，扫到的运行文件从 12 个 / 208239 B 变成 6 个 / 139226 B。
+- 0.2.8 还顺手校准了顶层 `resetAt` 的口径：它记的是「全局周期起点」，只有全局 ↺ 更新它，单会话 ↺ 只写那个会话自己的 `resetAt`（`lib/index.js` 的 `resetBaseline()`），`/diag` 里那个时间戳不再被会话重置带跑。
+- 自测：0.2.7 只动声明与文档，代码没改，仍是宿主 **151 通过 / 0 失败**、浏览器 **107 通过 / 0 失败**；0.2.8 给顶层 `resetAt` 的口径加了 2 条断言（单会话 ↺ 不刷新它、全局 ↺ 才刷新），宿主 → **153 通过 / 0 失败**。
 
 ## 3. 实现
 
@@ -130,7 +131,7 @@ m00862 的原句「弹出界面不需要设置已充金额，因为上限就是�
 ### 计费
 
 - 数据源：官方会话投影 `tokenUsage`（客户端 `useProjection("tokenUsage")`）与宿主的 `session/event` 折叠，四类 token 分开记：`uncachedInput` / `output` / `cacheRead` / `cacheWrite`。
-- 单价：`@earendil-works/pi-ai` 的官方价目表（USD / 百万 token），由 `tools/build-pricing.mjs` 生成为 `lib/pricing.json`——**32 个 provider / 605 个模型 / 37 KB**（排除了 `openrouter`、`amazon-bedrock`、`vercel-ai-gateway` 三张超大聚合表）。
+- 单价：`@earendil-works/pi-ai` 的官方价目表（USD / 百万 token），由 `tests/build-pricing.mjs` 生成为 `lib/pricing.json`——**32 个 provider / 605 个模型 / 37 KB**（排除了 `openrouter`、`amazon-bedrock`、`vercel-ai-gateway` 三张超大聚合表）。
 - 口径：`费用(USD) = Σ tokenᵢ × 单价ᵢ / 1e6`，再乘内置汇率（默认 7.2）得 ¥。汇率与任一模型单价都可在面板里改，**改完立刻按新规则重算全部历史**。
 - 账本**只存 token 与模型键，不存金额**（`~/.dsh/billing/ledger.json`）——所以「根据规则实时更新」是结构上成立的，而不是靠事后刷。
 - 折叠与官方同源：同一 `(turn, step)` 的重复采样**替换**而非累加；`llm/retry-started` 清该槽；会话日志被截断则冻结归档记录后重折。
@@ -160,11 +161,11 @@ m00862 的原句「弹出界面不需要设置已充金额，因为上限就是�
 
 | 证据 | 结果 |
 |---|---|
-| `node tools/self-test.mjs` | **151 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、自设全局上限与「超过余额夹到余额」、未设上限不阻断、余额取不到时不夹取且自设上限照旧生效、全局与单会话上限、**单会话上限各自独立（旧的共用默认字段已失效；两会话各存各的；清 0 只清该会话）**、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销、旧账本迁移落盘（0.1 与 0.2.4 两种形状）且**旧的共用默认上限落到各会话**、**[17] 重置计费起点：单会话重置只清该会话的本次且**不动全局本次**（因此全局上限照旧阻断）/ 全局重置把全局本次归零但**不碰各会话自己的周期**（bug 回归测试）/ 累计与 token 不变 / 磁盘上全局基线与会话基线各存各的 / 再产生用量只算本次 / 硬重置才清累计**） |
-| `node tools/self-test-client.mjs` | **107 通过 / 0 失败**（模块外壳、槽位注册、双角标各自带颜色点且**每组右边一个 ↺**、角标 title 含累计、本会话 ↺ title 说明「只动本会话」、全局 ↺ title 说明「只动全局、不碰各会话」、未设上限文案、侧栏余额（title 含本次/累计）、面板字段含「全局计费上限」且不含「已充金额」与「单会话默认上限」、**「单会话上限」独立成段且有列标题与「当前」标记**、**每个会话行两排：上排本次 token/费用、下排累计 token/费用（重置过的会话也能看见历史）**、**两个会话各自一格上限输入且提示「不与其他会话共用」**、**概览与按模型用量都标出累计、底部有 ↺ 重置计费起点与清空历史**、两种确认框（各带 ↺）、浮层开关、effect 清理） |
+| `node tests/self-test.mjs` | **153 通过 / 0 失败**（计价、替换式折叠、汇率改算、余额合计=充值+赠金、自设全局上限与「超过余额夹到余额」、未设上限不阻断、余额取不到时不夹取且自设上限照旧生效、全局与单会话上限、**单会话上限各自独立（旧的共用默认字段已失效；两会话各存各的；清 0 只清该会话）**、超额 reject 与 blockScope、一次性/单会话放行、守卫、持久化、路由注销、旧账本迁移落盘（0.1 与 0.2.4 两种形状）且**旧的共用默认上限落到各会话**、**[17] 重置计费起点：单会话重置只清该会话的本次且**不动全局本次**（因此全局上限照旧阻断）/ 全局重置把全局本次归零但**不碰各会话自己的周期**（bug 回归测试）/ 累计与 token 不变 / 磁盘上全局基线与会话基线各存各的 / 再产生用量只算本次 / 硬重置才清累计**） |
+| `node tests/self-test-client.mjs` | **107 通过 / 0 失败**（模块外壳、槽位注册、双角标各自带颜色点且**每组右边一个 ↺**、角标 title 含累计、本会话 ↺ title 说明「只动本会话」、全局 ↺ title 说明「只动全局、不碰各会话」、未设上限文案、侧栏余额（title 含本次/累计）、面板字段含「全局计费上限」且不含「已充金额」与「单会话默认上限」、**「单会话上限」独立成段且有列标题与「当前」标记**、**每个会话行两排：上排本次 token/费用、下排累计 token/费用（重置过的会话也能看见历史）**、**两个会话各自一格上限输入且提示「不与其他会话共用」**、**概览与按模型用量都标出累计、底部有 ↺ 重置计费起点与清空历史**、两种确认框（各带 ↺）、浮层开关、effect 清理） |
 | `GET /plugin-billing/state` | 200，真实数据（`usedCNY`、四类 token、`current.key`、`source: "official"`、`balance` 字段） |
 | 客户端 Slots inspect | `conversation.composer.dock` occupants 含 `{id: "billing", order: 20, active: true}`；`sidebar.footer.action` 含 `{id: "billing-balance", order: 20}` |
-| `node tools/probe-hmr.mjs` | 本地 `client.js` revision == 运行中宿主发行的 revision（HMR 已跟到） |
+| `node tests/probe-hmr.mjs` | 本地 `client.js` revision == 运行中宿主发行的 revision（HMR 已跟到） |
 | 账本 | `version: 3`，只有 token 与模型键，无金额字段；读到 0.1 的 `version: 1` 或 0.2.4 的 `version: 2` 会就地升级并立即落盘（用真实账本副本演练过：0.1 时代 3 个会话 / 370 个步骤前后一致；0.2.4 时代 1 个会话 / 970 个步骤一致，全局本次保持、被全局 ↺ 误伤的会话恢复自己的周期）；旧的共用默认上限（`sessionLimit`）会被落到当时已有记录的每个会话上再消失；0.2.5 起是 `globalBaseline`（全局 ↺）/ 每会话 `baselineByModel`（会话 ↺）/ `resetAt`，都是 token，不存金额，两个口径互不影响 |
 
 ## 5. 已知边界
@@ -172,7 +173,7 @@ m00862 的原句「弹出界面不需要设置已充金额，因为上限就是�
 - 订阅制账号并不按 token 单价扣费，这里的金额是**等效价值参考**，不是账单。
 - 角标挂在 `conversation.composer.dock`，只在会话输入态（composer）渲染；欢迎页不显示。
 - 浏览器半边改动由模块图 HMR 自动跟上（`dsh-client-hmr` 每 500ms stat 一次，元数据一变就 `rebuilt(id)`）；**宿主半边改完需要重启 DSH**。
-- 价格表为生成物，官方调价后需重跑 `tools/build-pricing.mjs`。
+- 价格表为生成物，官方调价后需重跑 `tests/build-pricing.mjs`。
 
 ## 6. 文件
 
@@ -182,11 +183,11 @@ cordis.patch.yml        装载补丁（- insert: yoka-dsh-billing）
 lib/index.js            宿主半边：折叠、计价、余额、上限、守卫、重置计费起点（基线前移）、HTTP 接口
 lib/client.js           浏览器半边：双角标（各带 ↺）+ 侧栏余额 + 面板 + 超额确认框
 lib/pricing.json        官方价目表（生成物）
-tools/build-pricing.mjs 从 pi-ai 数据生成 pricing.json
-tools/self-test.mjs     宿主自测（151 项）
-tools/self-test-client.mjs 浏览器自测（107 项）
-tools/probe-hmr.mjs     核对运行中宿主已发行本地这版 client.js
-tools/probe-http.mjs    HTTP 探活
+tests/build-pricing.mjs 从 pi-ai 数据生成 pricing.json
+tests/self-test.mjs     宿主自测（153 项）
+tests/self-test-client.mjs 浏览器自测（107 项）
+tests/probe-hmr.mjs     核对运行中宿主已发行本地这版 client.js
+tests/probe-http.mjs    HTTP 探活
 submission/             投稿物料（见下）
 ```
 

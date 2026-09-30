@@ -1,7 +1,7 @@
 /**
  * 浏览器半边自测：模块外壳、inject/apply、三个槽位注册，以及
  * 双角标 / 侧边栏余额 / 面板 / 超额确认框的渲染文本。
- * 用法：node tools/self-test-client.mjs
+ * 用法：node tests/self-test-client.mjs
  */
 import { readFileSync } from "node:fs";
 

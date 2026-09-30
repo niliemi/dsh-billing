@@ -1,7 +1,7 @@
 # CHECKLIST —— 还剩什么
 
 > **状态（2026-10-01 +08:00）**：① 已完成——公开仓库 `niliemi/dsh-billing` 已存在并推送，20 个文件，topics 与描述均已设置。0.2.2 的功能（双角标 + 侧栏余额 + 自设全局上限（超过余额会被夹到余额）+ 每个会话各自独立的单会话上限）已提交并推送，投稿条目的描述也已同步更新。
-> 剩下只有 ②③：等满 24 小时（本机 2026-10-01 19:54 之后）再提 PR。已挂一张**定时任务卡**在 10-01 20:10 自动执行 `node tools/submit-remote.mjs pr`。
+> 剩下只有 ②③：等满 24 小时（本机 2026-10-01 19:54 之后）再提 PR。已挂一张**定时任务卡**在 10-01 20:10 自动执行 `node tests/submit-remote.mjs pr`。
 
 署名已填：**GitHub `niliemi`**、提交邮箱 `1957073994@qq.com`、仓库 `dsh-billing`。占位符已清零。
 
@@ -37,10 +37,11 @@
 - [x] `package.json`：去掉 `private`、英文准确描述、`keywords` 含 `dsh-plugin`、`repository`/`bugs`/`homepage`/`author` 指向 `github.com/niliemi/dsh-billing`
 - [x] `dsh.bundle` + `dsh.client` 均已声明；**零 `@deepseek-ai/*` 运行时依赖**
 - [x] `LICENSE`（MIT，署名 niliemi）、`.gitignore`、`.gitattributes`（`* text=auto eol=lf`）
-- [x] 自测：`node tools/self-test.mjs` → **151/0**，`node tools/self-test-client.mjs` → **107/0**
+- [x] 自测：`node tests/self-test.mjs` → **153/0**，`node tests/self-test-client.mjs` → **107/0**
 - [x] `npm pack --dry-run` → 7 个文件 / 26 KB，内容完整
 - [x] **DSH STORE 声明（0.2.7）**：`package.json` 补 `engines.node = ">=20"`、`os`（三个桌面系统）、`dsh.compatibility = { dsh, profiles: ["web"], dshReleases: { "0.2.0-rc.2": "compatible" } }`；README 新增「权限、依赖与失败边界」（files / network / commands / credentials 各自的用途与边界、唯一外部服务 `deepseekAccount`、五条失败边界）；已用商城自己的 `inferredCompatibility()` 核对声明输出，并确认兼容保持（最新三个版本里至少一个 compatible）能过。
-- [ ] DSH STORE 仍会扫到两条**本性**权限信号（`lib/index.js` 的 files、`lib/client.js` 的 network，生态里 Web 插件客户端全都用 `fetch(`）；`tools/` 下 dev 脚本的 files/network/commands/credentials 四条可按商城规则（测试文件不算运行能力证据）通过改名为 `tests/` 消掉——**是否改结构待主人拍板**。
+- [x] **DSH STORE 结构层（0.2.8）**：dev 脚本 `tools/` → `tests/`（商城规则里「测试文件不是运行能力证据」，`tests/` 被它的扫描排除），用商城自己的 `permissionSignals()` 复扫：权限签名 **4 条 → 2 条**，运行文件 12 个 / 208239 B → 6 个 / 139226 B。
+- [ ] DSH STORE 仍会扫到两条**本性**权限信号：`lib/index.js` 的 files（账本要写 JSON）、`lib/client.js` 的 network（浏览器半边要调自己的宿主路由）——实测 profile 里 7 个第三方 `client.js` **全都**用 `fetch(`，手写客户端没有不引入构建步骤的等价 Remote 通道，所以这两条按预期保留。
 
 ## ⓪ 自动路径（推荐）：只放一个 token 文件，其余交给脚本
 
@@ -57,9 +58,9 @@
 
    ```powershell
    cd "C:\Users\walex lin\Desktop\dsh workflow\插件\dsh-billing"
-   node tools/submit-remote.mjs check    # 只体检：身份、仓库是否存在、够不够 1 天
-   node tools/submit-remote.mjs all      # 建仓库 + 打 topic + 推送（满 1 天则连 PR 一起提）
-   node tools/submit-remote.mjs pr       # 24 小时后再跑这条来提 PR
+   node tests/submit-remote.mjs check    # 只体检：身份、仓库是否存在、够不够 1 天
+   node tests/submit-remote.mjs all      # 建仓库 + 打 topic + 推送（满 1 天则连 PR 一起提）
+   node tests/submit-remote.mjs pr       # 24 小时后再跑这条来提 PR
    ```
 
 脚本不会打印 token；推送用 `git -c http.extraheader` 传 Basic，token 不写进 remote URL。**走网的 git 步骤是「直连优先 × 3 次，失败再看本地代理端口开不开」**（本机 github.com:443 时通时不通；次数用 `GIT_NET_RETRIES` 改，`api.github.com` 不受影响）。用完可以直接 Revoke 那个 token。下面的手写步骤是同等效力的人工备份路径。

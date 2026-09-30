@@ -1,5 +1,5 @@
 // 探活脚本：确认宿主半边注册的 /plugin-billing/* 路由与浏览器半边 bundle 是否已由运行中的 DSH 提供。
-// 用法：node tools/probe-http.mjs [origin]   （默认 http://127.0.0.1:19387）
+// 用法：node tests/probe-http.mjs [origin]   （默认 http://127.0.0.1:19387）
 
 const origin = process.argv[2] ?? "http://127.0.0.1:19387";
 

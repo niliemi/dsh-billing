@@ -1,7 +1,7 @@
 /**
  * 从 @earendil-works/pi-ai 的官方 provider 数据生成 lib/pricing.json。
  *
- * 用法：node tools/build-pricing.mjs <pi-ai/dist/providers/data 目录>
+ * 用法：node tests/build-pricing.mjs <pi-ai/dist/providers/data 目录>
  * 默认：C:\Users\walex lin\.dsh\billing-src\pi-ai-data
  *
  * 输出（紧凑格式，金额单位 USD / 百万 token）：

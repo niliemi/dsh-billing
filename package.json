@@ -1,6 +1,6 @@
 {
   "name": "yoka-dsh-billing",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "DSH plugin: prices tokens from the official model price table, shows the per-session and global running cost beside the composer's context meter, mirrors your DeepSeek account balance in the sidebar, blocks a turn past your own global ceiling (clamped to that balance) or a per-session ceiling (each session's ceiling is independent), and lets you reset the billing baseline (per session or globally, the two are fully independent) so this period goes back to zero while history only rolls into the lifetime total, which every session row shows on its own second line.",
   "type": "module",
   "main": "lib/index.js",

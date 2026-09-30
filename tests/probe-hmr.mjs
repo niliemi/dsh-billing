@@ -9,7 +9,7 @@
  * 所以：只要「本地算出的 revision」== 「/plugins/events 图上该条目的 revision」，
  * 就说明运行中的宿主已经发布了新字节，页面上的插件已经被重挂载（无需刷新、无需重启）。
  *
- * 用法：node tools/probe-hmr.mjs [origin] [packageId]
+ * 用法：node tests/probe-hmr.mjs [origin] [packageId]
  */
 
 import { statSync } from "node:fs";

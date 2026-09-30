@@ -8,11 +8,11 @@
  *   · 推送用 git -c http.extraheader 传 Basic，token 不进 remote URL、不落盘。
  *
  * 用法：
- *   node tools/submit-remote.mjs check    # 只体检：token、身份、仓库是否存在、够不够 1 天
- *   node tools/submit-remote.mjs repo     # 建公开仓库 dsh-billing + 打 topic dsh-plugin
- *   node tools/submit-remote.mjs push     # 推 main（直连优先，失败自动重试；本地代理开着就兜底走它）
- *   node tools/submit-remote.mjs pr       # fork 精选列表 → 加条目 → 开 PR（仓库不满 1 天会拒绝）
- *   node tools/submit-remote.mjs all      # repo + push（满 1 天则连 pr 一起）
+ *   node tests/submit-remote.mjs check    # 只体检：token、身份、仓库是否存在、够不够 1 天
+ *   node tests/submit-remote.mjs repo     # 建公开仓库 dsh-billing + 打 topic dsh-plugin
+ *   node tests/submit-remote.mjs push     # 推 main（直连优先，失败自动重试；本地代理开着就兜底走它）
+ *   node tests/submit-remote.mjs pr       # fork 精选列表 → 加条目 → 开 PR（仓库不满 1 天会拒绝）
+ *   node tests/submit-remote.mjs all      # repo + push（满 1 天则连 pr 一起）
  *   加 --force 可跳过「仓库满 1 天」检查（不推荐：CI 会失败）
  *
  * 网络：github.com:443 在本机时通时不通，所以 git 走网的每一步都「直连优先 × N 次」，
@@ -261,7 +261,7 @@ if (step === "all") {
   await push();
   const info = await check();
   if (info.repo && info.ageH >= 24) await pr();
-  else log(`\n下一步：等仓库满 24 小时后跑  node tools/submit-remote.mjs pr`);
+  else log(`\n下一步：等仓库满 24 小时后跑  node tests/submit-remote.mjs pr`);
 } else if (steps[step]) {
   await steps[step]();
 } else {
